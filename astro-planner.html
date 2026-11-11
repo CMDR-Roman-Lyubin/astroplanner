@@ -1,0 +1,708 @@
+<title>Небо на ночь</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: одна колонка — пульт сверху, полоса ночи, под ней список карточек выбранной вкладки. Только тёмная тема: страницей пользуются ночью у телескопа. */
+:root{
+  color-scheme:dark;
+  --bg:#0c111d; --surface:#141b2c; --line:#26304a; --fg:#dde2ee; --muted:#8a93ab;
+  --accent:#e9b65c; --moon:#c5d0ef;
+  --day:#6f8fc4; --civil:#4a6296; --naut:#2f3f6b; --astro:#1c2747; --night:#070a13;
+  --font:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--font);
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:22px;margin:0;font-weight:600;letter-spacing:.01em}
+.sub{color:var(--muted);margin:0;font-size:13px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+input,select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-width:0;width:100%;box-sizing:border-box}
+input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bar{position:relative;height:18px;border-radius:4px;border:1px solid var(--line)}
+.moonbar{height:5px;border-radius:3px;margin-top:3px}
+.ticks{position:relative;height:18px;font:11px var(--mono);color:var(--muted)}
+.ticks span{position:absolute;transform:translateX(-50%);top:2px}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line)}
+.tabs button{font:inherit;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer}
+.tabs button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.cats{display:flex;flex-wrap:wrap;gap:6px}
+.cats button,.log button{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
+.cats button[aria-pressed=true],.log button[aria-pressed=true]{color:var(--bg);background:var(--accent);border-color:var(--accent)}
+.log{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;padding:0 12px 12px}
+.log textarea{flex-basis:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 8px;box-sizing:border-box;resize:vertical}
+.name small.marks{color:var(--accent)}
+.tabs{overflow-x:auto}
+.tabs button{white-space:nowrap;padding:8px 9px}
+/* настройки сворачиваются: на телефоне первым экраном должны быть поиск и список, а не форма */
+#setup{background:none;border:0;border-radius:0}
+#setup>summary{display:list-item;list-style:inside disclosure-closed;padding:4px 0;color:var(--accent)}
+#setup[open]>summary{list-style-type:disclosure-open;margin-bottom:10px}
+#setup>summary::-webkit-details-marker{display:revert}
+.list h2{font-size:15px;font-weight:600;margin:10px 0 0}
+.log label{flex:1 1 150px}
+.log input,.log select{background:var(--bg)}
+.log img{flex-basis:100%;max-width:100%;border-radius:6px}
+.log .status{flex-basis:100%;font-size:12px;color:var(--muted)}
+.list{display:flex;flex-direction:column;gap:8px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:8px}
+summary{cursor:pointer;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:2px 12px;list-style:none}
+summary::-webkit-details-marker{display:none}
+.name{font-weight:600}
+.name small{font-weight:400;color:var(--muted);margin-left:6px}
+.score{font:600 15px var(--mono);color:var(--accent);grid-row:span 3;align-self:center}
+.facts{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chart{padding:0 12px 10px}
+.chart svg{display:block;width:100%;height:90px}
+.chart p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.empty{color:var(--muted);padding:16px 0}
+</style>
+
+<main>
+  <header>
+    <h1>Небо на ночь</h1>
+    <p class="sub">Объекты дальнего космоса, которые лучше всего снимать и наблюдать в выбранную ночь.</p>
+  </header>
+
+  <details id="setup"><summary id="setupSum">Место, дата и оборудование</summary>
+  <form id="f">
+    <label>Город<select id="city"></select></label>
+    <label>Широта, °<input id="lat" type="number" step="0.01" min="-90" max="90"></label>
+    <label>Долгота, °<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
+    <label>Вечер даты<input id="date" type="date"></label>
+    <label>Засветка (Бортль)<select id="bortle"></select></label>
+    <label>Смарт-телескоп<select id="scope">
+      <option value="">свой сетап</option>
+      <option value="250|5.6x3.2">ZWO Seestar S50</option>
+      <option value="150|5.6x3.2">ZWO Seestar S30</option>
+      <option value="160|11.2x6.3">ZWO Seestar S30 Pro</option>
+      <option value="150|7.7x4.3">DWARF 3</option>
+      <option value="100|5.6x3.2">DWARF II</option>
+      <option value="200|5.6x3.2">Vaonis Vespera</option>
+      <option value="250|11.2x6.3">Vaonis Vespera II</option>
+      <option value="250|7x7">Vaonis Vespera Pro</option>
+      <option value="335|7.4x5">Celestron Origin</option>
+    </select></label>
+    <label>Фокусное для съёмки, мм<input id="focal" type="number" min="1" step="1" placeholder="не задано"></label>
+    <label>Сенсор<select id="sensor">
+      <option value="">не задан</option>
+      <option value="36x24">Полный кадр 36×24</option>
+      <option value="23.5x15.6">APS-C 23,5×15,6</option>
+      <option value="22.3x14.9">APS-C Canon 22,3×14,9</option>
+      <option value="17.3x13">Micro 4/3 17,3×13</option>
+      <option value="13.2x8.8">1″ 13,2×8,8</option>
+      <option value="11.3x11.3">IMX533 11,3×11,3</option>
+      <option value="11.2x6.3">IMX585 11,2×6,3</option>
+      <option value="7.7x4.3">IMX678 7,7×4,3</option>
+      <option value="7.4x5">IMX178 7,4×5,0</option>
+      <option value="7x7">IMX676 7,0×7,0</option>
+      <option value="5.6x3.2">IMX462/662 5,6×3,2</option>
+    </select></label>
+    <label>Апертура для визуала, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
+    <label>Фильтр OIII для визуала<input id="oiii" type="checkbox"></label>
+  </form></details>
+
+  <section aria-label="Ход ночи">
+    <div class="bar" id="bar"></div>
+    <div class="moonbar" id="moonbar" title="Луна над горизонтом"></div>
+    <div class="ticks" id="ticks"></div>
+    <p class="sub" id="summary"></p>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-photo" aria-selected="true">Фото</button>
+    <button role="tab" id="tab-visual" aria-selected="false">Визуал</button>
+    <button role="tab" id="tab-plan" aria-selected="false">Мой план</button>
+    <button role="tab" id="tab-done" aria-selected="false">Журнал</button>
+  </div>
+  <input id="q" type="search" placeholder="Поиск объекта: M31, Вуаль, NGC 7000…" aria-label="Поиск объекта">
+  <div class="cats" id="cats" role="group" aria-label="Категория объектов"></div>
+  <div class="list" id="list"></div>
+  <p class="sub" id="sync">План, журнал и снимки хранятся на этом устройстве.</p>
+  <p class="sub">Оценка 0–100 — эвристика: часы над горизонтом в тёмное время, высота, Луна, размер (фото) или поверхностная яркость против засветки (визуал). Координаты каталога округлены до ~0,5°.</p>
+</main>
+
+<script>
+// ---------- Каталог: id;название;тип;созвездие;RA ч;Dec °;блеск;размер a';b' ----------
+// Координаты J2000, записаны по памяти с точностью ~0,5° — для планирования хватает, для наведения нет.
+// Блеск слабых туманностей занижен вручную, чтобы визуальная оценка не обещала невидимое (Конская Голова и т.п.).
+const CATALOG = `
+M1;Крабовидная туманность;SNR;Tau;5.575;22.02;8.4;6;4
+M2;;GC;Aqr;21.558;-0.82;6.5;16
+M3;;GC;CVn;13.703;28.38;6.2;18
+M4;;GC;Sco;16.393;-26.53;5.6;26
+M5;;GC;Ser;15.31;2.08;5.7;23
+M6;Бабочка;OC;Sco;17.668;-32.22;4.2;25
+M7;Скопление Птолемея;OC;Sco;17.898;-34.82;3.3;80
+M8;Лагуна;EN;Sgr;18.063;-24.38;6;90;40
+M9;;GC;Oph;17.32;-18.52;7.7;12
+M10;;GC;Oph;16.952;-4.1;6.6;20
+M11;Дикая Утка;OC;Sct;18.852;-6.27;6.3;14
+M12;;GC;Oph;16.787;-1.95;6.7;16
+M13;Скопление Геркулеса;GC;Her;16.695;36.46;5.8;20
+M14;;GC;Oph;17.627;-3.25;7.6;11
+M15;;GC;Peg;21.5;12.17;6.2;18
+M16;Орёл;EN;Ser;18.313;-13.78;6;35;28
+M17;Омега;EN;Sgr;18.347;-16.18;6;46;37
+M18;;OC;Sgr;18.332;-17.13;6.9;9
+M19;;GC;Oph;17.043;-26.27;6.8;17
+M20;Трёхраздельная;EN;Sgr;18.043;-23.03;6.3;28
+M21;;OC;Sgr;18.077;-22.5;5.9;13
+M22;;GC;Sgr;18.607;-23.9;5.1;32
+M23;;OC;Sgr;17.947;-19.02;5.5;27
+M24;Звёздное облако Стрельца;OC;Sgr;18.283;-18.48;4.6;90
+M25;;OC;Sgr;18.527;-19.25;4.6;32
+M26;;OC;Sct;18.753;-9.4;8;15
+M27;Гантель;PN;Vul;19.993;22.72;7.4;8;5.7
+M28;;GC;Sgr;18.408;-24.87;6.8;11
+M29;;OC;Cyg;20.398;38.53;6.6;7
+M30;;GC;Cap;21.673;-23.18;7.2;12
+M31;Туманность Андромеды;G;And;0.712;41.27;3.4;190;60
+M32;;G;And;0.712;40.87;8.1;8;6
+M33;Галактика Треугольника;G;Tri;1.564;30.66;5.7;70;42
+M34;;OC;Per;2.7;42.78;5.2;35
+M35;;OC;Gem;6.148;24.33;5.1;28
+M36;;OC;Aur;5.602;34.13;6;12
+M37;;OC;Aur;5.873;32.55;5.6;24
+M38;;OC;Aur;5.478;35.83;6.4;21
+M39;;OC;Cyg;21.537;48.43;4.6;32
+M41;;OC;CMa;6.767;-20.73;4.5;38
+M42;Туманность Ориона;EN;Ori;5.588;-5.39;4;65;60
+M43;Де Мерана;EN;Ori;5.593;-5.27;9;20;15
+M44;Ясли;OC;Cnc;8.673;19.67;3.1;95
+M45;Плеяды;OC;Tau;3.79;24.12;1.6;110
+M46;;OC;Pup;7.697;-14.82;6.1;27
+M47;;OC;Pup;7.61;-14.5;4.4;30
+M48;;OC;Hya;8.228;-5.8;5.8;54
+M49;;G;Vir;12.497;8;8.4;10;8
+M50;;OC;Mon;7.053;-8.33;5.9;16
+M51;Водоворот;G;CVn;13.498;47.2;8.4;11;7
+M52;;OC;Cas;23.403;61.58;6.9;13
+M53;;GC;Com;13.215;18.17;7.6;13
+M54;;GC;Sgr;18.918;-30.48;7.6;12
+M55;;GC;Sgr;19.667;-30.97;6.3;19
+M56;;GC;Lyr;19.277;30.18;8.3;9
+M57;Кольцо;PN;Lyr;18.893;33.03;8.8;1.4;1
+M58;;G;Vir;12.628;11.82;9.7;6;5
+M59;;G;Vir;12.7;11.65;9.6;5;3.5
+M60;;G;Vir;12.728;11.55;8.8;7;6
+M61;;G;Vir;12.365;4.47;9.7;6.5;5.8
+M62;;GC;Oph;17.02;-30.12;6.5;15
+M63;Подсолнух;G;CVn;13.263;42.03;8.6;12.6;7.2
+M64;Чёрный Глаз;G;Com;12.945;21.68;8.5;10;5.4
+M65;;G;Leo;11.315;13.09;9.3;9.8;2.9
+M66;;G;Leo;11.337;12.99;8.9;9.1;4.2
+M67;;OC;Cnc;8.857;11.82;6.1;30
+M68;;GC;Hya;12.658;-26.75;7.8;11
+M69;;GC;Sgr;18.523;-32.35;7.6;10
+M70;;GC;Sgr;18.72;-32.3;7.9;8
+M71;;GC;Sge;19.897;18.78;8.2;7
+M72;;GC;Aqr;20.892;-12.53;9.3;6.6
+M74;;G;Psc;1.612;15.78;9.4;10.5;9.5
+M75;;GC;Sgr;20.102;-21.92;8.5;6.8
+M76;Малая Гантель;PN;Per;1.705;51.57;10.1;2.7;1.8
+M77;;G;Cet;2.712;-0.01;8.9;7;6
+M78;;RN;Ori;5.779;0.05;8.3;8;6
+M79;;GC;Lep;5.408;-24.52;7.7;9.6
+M80;;GC;Sco;16.283;-22.98;7.3;10
+M81;Галактика Боде;G;UMa;9.926;69.07;6.9;27;14
+M82;Сигара;G;UMa;9.931;69.68;8.4;11;4.3
+M83;Южная Вертушка;G;Hya;13.617;-29.87;7.5;13;11.5
+M84;;G;Vir;12.418;12.89;9.1;6.5;5.6
+M85;;G;Com;12.423;18.19;9.1;7;5.5
+M86;;G;Vir;12.437;12.95;8.9;9;5.8
+M87;Дева A;G;Vir;12.513;12.39;8.6;8.3;6.6
+M88;;G;Com;12.533;14.42;9.6;6.9;3.7
+M89;;G;Vir;12.593;12.56;9.8;5;4.6
+M90;;G;Vir;12.613;13.16;9.5;9.5;4.4
+M91;;G;Com;12.59;14.5;10.2;5.4;4.3
+M92;;GC;Her;17.285;43.14;6.4;14
+M93;;OC;Pup;7.743;-23.87;6;22
+M94;;G;CVn;12.848;41.12;8.2;11;9
+M95;;G;Leo;10.733;11.7;9.7;7.4;5
+M96;;G;Leo;10.78;11.82;9.2;7.6;5.2
+M97;Сова;PN;UMa;11.247;55.02;9.9;3.4;3.3
+M98;;G;Com;12.23;14.9;10.1;9.8;2.8
+M99;;G;Com;12.313;14.42;9.9;5.4;4.7
+M100;;G;Com;12.382;15.82;9.3;7.4;6.3
+M101;Вертушка;G;UMa;14.053;54.35;7.9;29;27
+M102;Веретено;G;Dra;15.108;55.76;9.9;4.7;1.9
+M103;;OC;Cas;1.555;60.7;7.4;6
+M104;Сомбреро;G;Vir;12.667;-11.62;8;8.7;3.5
+M105;;G;Leo;10.797;12.58;9.3;5.4;4.8
+M106;;G;CVn;12.316;47.3;8.4;18.6;7.2
+M107;;GC;Oph;16.542;-13.05;7.9;13
+M108;;G;UMa;11.192;55.67;10;8.7;2.2
+M109;;G;UMa;11.96;53.37;9.8;7.6;4.7
+M110;;G;And;0.673;41.68;8.5;22;11
+NGC 7000;Северная Америка;EN;Cyg;20.98;44.33;7;120;100
+IC 5070;Пеликан;EN;Cyg;20.85;44.35;8;60;50
+NGC 6960;Вуаль, западная (Ведьмина Метла);SNR;Cyg;20.76;30.72;8.5;70;6
+NGC 6992;Вуаль, восточная;SNR;Cyg;20.94;31.72;8.5;60;8
+NGC 6888;Полумесяц;EN;Cyg;20.2;38.35;10;18;12
+IC 1318;Туманность у Садра;EN;Cyg;20.37;40.25;10;60
+NGC 6826;Мерцающая;PN;Cyg;19.747;50.53;8.8;0.45
+NGC 7293;Улитка;PN;Aqr;22.494;-20.84;7.3;16;12
+NGC 7009;Сатурн;PN;Aqr;21.07;-11.36;8;0.7;0.4
+NGC 7662;Голубой Снежок;PN;And;23.432;42.54;8.3;0.5
+NGC 7331;;G;Peg;22.618;34.42;9.5;10.5;3.7
+NGC 7635;Пузырь;EN;Cas;23.345;61.2;11;15;8
+NGC 7380;Волшебник;EN;Cep;22.787;58.1;10;25
+IC 1396;Хобот Слона;EN;Cep;21.65;57.5;9;170;140
+NGC 7023;Ирис;RN;Cep;21.027;68.17;7.5;18
+NGC 6946;Фейерверк;G;Cep;20.581;60.15;8.9;11.5;9.8
+NGC 7789;Роза Каролины;OC;Cas;23.955;56.72;6.7;16
+NGC 457;Сова (скопление);OC;Cas;1.325;58.28;6.4;13
+NGC 281;Пакман;EN;Cas;0.88;56.62;9;35;30
+IC 1805;Сердце;EN;Cas;2.545;61.45;10;150
+IC 1848;Душа;EN;Cas;2.855;60.43;10;150;75
+NGC 869/884;Хи и Аш Персея;OC;Per;2.343;57.13;3.8;60;30
+NGC 1499;Калифорния;EN;Per;4.055;36.42;9;145;40
+NGC 891;;G;And;2.376;42.35;9.9;13.5;2.5
+NGC 253;Галактика Скульптора;G;Scl;0.793;-25.29;7.1;27.5;6.8
+NGC 246;Череп;PN;Cet;0.784;-11.87;10.9;4
+NGC 2237;Розетка;EN;Mon;6.538;4.95;7.5;80;60
+NGC 2264;Конус и Рождественская Ёлка;EN;Mon;6.683;9.88;8;40
+NGC 2392;Эскимос;PN;Gem;7.486;20.91;9.2;0.8
+NGC 2174;Голова Обезьяны;EN;Ori;6.158;20.5;9.5;40;30
+IC 443;Медуза;SNR;Gem;6.283;22.5;12;50;40
+IC 434;Конская Голова;EN;Ori;5.683;-2.46;11;60;10
+NGC 2024;Пламя;EN;Ori;5.695;-1.85;10;30
+NGC 1977;Бегущий Человек;RN;Ori;5.588;-4.85;8;20;10
+NGC 2359;Шлем Тора;EN;CMa;7.308;-13.22;11.5;10;5
+NGC 2403;;G;Cam;7.614;65.6;8.4;22;12
+NGC 2903;;G;Leo;9.536;21.5;9;12.6;6
+NGC 3628;Гамбургер;G;Leo;11.338;13.59;9.5;15;3.6
+NGC 3242;Призрак Юпитера;PN;Hya;10.413;-18.64;7.8;0.7
+NGC 4565;Игла;G;Com;12.606;25.99;9.6;16;2
+NGC 4631;Кит;G;CVn;12.703;32.54;9.2;15.5;2.7
+NGC 4244;Серебряная Игла;G;CVn;12.292;37.81;10.4;16;2
+NGC 4449;;G;CVn;12.47;44.09;9.6;6;4.5
+NGC 4490;Кокон (галактика);G;CVn;12.51;41.64;9.8;6.4;3.3
+NGC 4038;Антенны;G;Crv;12.031;-18.87;10.3;5;3
+NGC 5128;Центавр A;G;Cen;13.425;-43.02;6.8;26;20
+NGC 5139;Омега Центавра;GC;Cen;13.446;-47.48;3.7;36
+NGC 5907;Заноза;G;Dra;15.265;56.33;10.3;12.6;1.4
+NGC 6543;Кошачий Глаз;PN;Dra;17.976;66.63;8.1;0.4
+NGC 6210;;PN;Her;16.742;23.8;8.8;0.3
+NGC 6633;;OC;Oph;18.458;6.57;4.6;27
+IC 4665;;OC;Oph;17.772;5.72;4.2;40
+IC 4756;;OC;Ser;18.65;5.43;4.6;52
+NGC 6940;;OC;Vul;20.577;28.28;6.3;31
+Cr 399;Вешалка;OC;Vul;19.42;20.18;3.6;60
+Sh2-101;Тюльпан;EN;Cyg;20;35.3;11;16;9
+IC 5146;Кокон;EN;Cyg;21.89;47.27;10;12
+Sh2-155;Пещера;EN;Cep;22.95;62.6;11;50;30
+NGC 7822;;EN;Cep;0.06;67.15;11;60;30
+NGC 40;Галстук-бабочка;PN;Cep;0.217;72.52;10.7;0.6
+IC 342;Скрытая галактика;G;Cam;3.78;68.1;8.4;21
+IC 405;Пылающая Звезда;EN;Aur;5.27;34.27;10;37;19
+IC 410;Головастики;EN;Aur;5.377;33.45;10;40;30
+IC 2118;Голова Ведьмы;RN;Eri;5.08;-7.2;13;180;60
+NGC 1300;;G;Eri;3.328;-19.41;10.4;6.2;4.1
+NGC 1365;;G;For;3.56;-36.14;9.6;11;6
+NGC 2070;Тарантул;EN;Dor;5.644;-69.1;5;40;25
+LMC;Большое Магелланово Облако;G;Dor;5.39;-69.75;0.9;645;550
+SMC;Малое Магелланово Облако;G;Tuc;0.88;-72.8;2.7;320;185
+NGC 104;47 Тукана;GC;Tuc;0.402;-72.08;4;31
+NGC 362;;GC;Tuc;1.054;-70.85;6.4;14
+NGC 3372;Туманность Киля;EN;Car;10.752;-59.87;3;120
+NGC 4755;Шкатулка;OC;Cru;12.895;-60.33;4.2;10
+NGC 6752;;GC;Pav;19.18;-59.98;5.4;20
+NGC 6397;;GC;Ara;17.678;-53.67;5.7;26
+NGC 3532;Колодец Желаний;OC;Car;11.097;-58.75;3;55
+IC 2602;Южные Плеяды;OC;Car;10.717;-64.4;1.9;50
+NGC 2516;;OC;Car;7.97;-60.87;3.8;30
+NGC 2808;;GC;Car;9.2;-64.87;6.2;14
+NGC 6231;;OC;Sco;16.9;-41.83;2.6;15
+NGC 6334;Кошачья Лапа;EN;Sco;17.34;-35.85;10;35;20
+NGC 6357;Лобстер;EN;Sco;17.41;-34.2;10;50;40
+NGC 6188;Драконы Жертвенника;EN;Ara;16.67;-48.8;10;20;12
+IC 2944;Бегущая Курица;EN;Cen;11.63;-63.37;7;75;50
+NGC 3576;Статуя Свободы;EN;Car;11.2;-61.3;9;30
+IC 4604;Ро Змееносца;RN;Oph;16.43;-23.45;11;120;90
+NGC 55;;G;Scl;0.248;-39.2;7.9;32;5.6
+NGC 300;;G;Scl;0.915;-37.68;8.1;22;15
+NGC 4945;;G;Cen;13.09;-49.47;8.6;20;3.8
+NGC 3132;Южное Кольцо;PN;Vel;10.118;-40.44;9.9;1.4;0.9
+NGC 2477;;OC;Pup;7.872;-38.53;5.8;27
+NGC 1851;;GC;Col;5.235;-40.05;7.1;12
+NGC 3115;Веретено (Секстант);G;Sex;10.087;-7.72;8.9;7.2;2.5
+NGC 3521;;G;Leo;11.097;-0.04;9;11;5.1
+NGC 2683;НЛО;G;Lyn;8.878;33.42;9.8;9.3;2.2
+NGC 2841;;G;UMa;9.367;50.98;9.2;8.1;3.5
+NGC 6781;;PN;Aql;19.307;6.54;11.4;1.8
+NGC 6822;Галактика Барнарда;G;Sgr;19.749;-14.8;8.8;15.5;13.5
+NGC 7479;;G;Peg;23.082;12.32;10.9;4;3.1
+NGC 2261;Переменная туманность Хаббла;RN;Mon;6.653;8.73;9;2;1
+Sh2-240;Спагетти (Симеиз 147);SNR;Tau;5.65;28;14;180
+Sh2-308;Голова Дельфина;EN;CMa;6.9;-23.9;13;40
+IC 63;Призрак Кассиопеи;EN;Cas;0.98;60.9;13;30
+Abell 21;Медуза (планетарная);PN;Gem;7.483;13.25;12;10
+NGC 752;;OC;And;1.96;37.78;5.7;50
+NGC 663;;OC;Cas;1.767;61.25;7.1;16
+Mel 20;Скопление Альфа Персея;OC;Per;3.4;49;1.2;185
+Mel 111;Скопление Волос Вероники;OC;Com;12.42;26;1.8;275
+Mel 25;Гиады;OC;Tau;4.45;15.87;0.5;330
+`.trim().split('\n').map(l=>{const [id,name,type,con,ra,dec,mag,a,b]=l.split(';');
+  return {id,name,type,con,ra:ra*15,dec:+dec,mag:+mag,a:+a,b:+(b||a)}});
+
+const TYPES={G:'галактика',EN:'эмиссионная туманность',RN:'отражательная туманность',SNR:'остаток сверхновой',
+  PN:'планетарная туманность',OC:'рассеянное скопление',GC:'шаровое скопление'};
+// Насколько Луна портит съёмку: эмиссионные объекты спасает узкополосный фильтр, галактики и пыль — нет.
+const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5};
+const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45};
+const SKY=[0,22,21.9,21.6,21,20.2,19.3,18.6,18,17.5]; // яркость неба по Бортлю, mag/arcsec²
+const PHOTO_ALT=25, VISUAL_ALT=20; // 25°, а не 30°: иначе с широты Москвы выпадает M42
+
+// название; широта; долгота; часовой пояс
+const CITIES=`Москва;55.75;37.62;Europe/Moscow
+Санкт-Петербург;59.94;30.31;Europe/Moscow
+Новосибирск;55.03;82.92;Asia/Novosibirsk
+Екатеринбург;56.84;60.61;Asia/Yekaterinburg
+Казань;55.8;49.11;Europe/Moscow
+Нижний Новгород;56.33;44;Europe/Moscow
+Челябинск;55.16;61.4;Asia/Yekaterinburg
+Самара;53.2;50.15;Europe/Samara
+Омск;54.99;73.37;Asia/Omsk
+Ростов-на-Дону;47.23;39.72;Europe/Moscow
+Уфа;54.74;55.97;Asia/Yekaterinburg
+Красноярск;56.01;92.87;Asia/Krasnoyarsk
+Воронеж;51.67;39.21;Europe/Moscow
+Пермь;58.01;56.25;Asia/Yekaterinburg
+Волгоград;48.71;44.51;Europe/Volgograd
+Краснодар;45.04;38.98;Europe/Moscow
+Сочи;43.59;39.72;Europe/Moscow
+Иркутск;52.29;104.3;Asia/Irkutsk
+Владивосток;43.12;131.89;Asia/Vladivostok
+Хабаровск;48.48;135.07;Asia/Vladivostok
+Мурманск;68.97;33.08;Europe/Moscow
+Калининград;54.71;20.51;Europe/Kaliningrad
+Симферополь;44.95;34.1;Europe/Simferopol
+Минск;53.9;27.57;Europe/Minsk
+Киев;50.45;30.52;Europe/Kiev
+Алматы;43.24;76.89;Asia/Almaty
+Астана;51.17;71.43;Asia/Almaty
+Ташкент;41.3;69.24;Asia/Tashkent
+Тбилиси;41.72;44.79;Asia/Tbilisi
+Ереван;40.18;44.51;Asia/Yerevan
+Баку;40.41;49.87;Asia/Baku
+Лондон;51.51;-0.13;Europe/London
+Берлин;52.52;13.4;Europe/Berlin
+Париж;48.86;2.35;Europe/Paris
+Мадрид;40.42;-3.7;Europe/Madrid
+Рим;41.9;12.5;Europe/Rome
+Стамбул;41.01;28.98;Europe/Istanbul
+Тель-Авив;32.08;34.78;Asia/Jerusalem
+Дубай;25.2;55.27;Asia/Dubai
+Тенерифе;28.29;-16.63;Atlantic/Canary
+Нью-Йорк;40.71;-74.01;America/New_York
+Лос-Анджелес;34.05;-118.24;America/Los_Angeles
+Токио;35.68;139.69;Asia/Tokyo
+Сидней;-33.87;151.21;Australia/Sydney
+Кейптаун;-33.92;18.42;Africa/Johannesburg
+Сантьяго;-33.45;-70.67;America/Santiago`.split('\n').map(l=>{const [name,lat,lon,tz]=l.split(';');return {name,lat:+lat,lon:+lon,tz}});
+
+// ---------- Астрономия (низкая точность: Солнце ~0,01°, Луна ~0,5°, без параллакса и прецессии) ----------
+const R=Math.PI/180, sin=d=>Math.sin(d*R), cos=d=>Math.cos(d*R);
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const asin=x=>Math.asin(clamp(x,-1,1))/R;
+const days=t=>t/864e5-10957.5;                       // сутки от J2000.0 из unix-мс
+const lst=(d,lon)=>280.46061837+360.98564736629*d+lon; // местное звёздное время, °
+const alt=(lat,L,p)=>asin(sin(lat)*sin(p.dec)+cos(lat)*cos(p.dec)*cos(L-p.ra));
+const sep=(p,q)=>Math.acos(clamp(sin(p.dec)*sin(q.dec)+cos(p.dec)*cos(q.dec)*cos(p.ra-q.ra),-1,1))/R;
+function eq(lam,beta,d){ // эклиптические → экваториальные
+  const e=23.439-4e-7*d;
+  return {ra:Math.atan2(sin(lam)*cos(e)-Math.tan(beta*R)*sin(e),cos(lam))/R, dec:asin(sin(beta)*cos(e)+cos(beta)*sin(e)*sin(lam))};
+}
+function sunPos(d){const g=357.528+.9856003*d; return eq(280.46+.9856474*d+1.915*sin(g)+.02*sin(2*g),0,d)}
+function moonPos(d){const T=d/36525;
+  const lam=218.32+481267.881*T+6.29*sin(135+477198.87*T)-1.27*sin(259.3-413335.36*T)+.66*sin(235.7+890534.22*T)
+    +.21*sin(269.9+954397.74*T)-.19*sin(357.5+35999.05*T)-.11*sin(186.5+966404.03*T);
+  const beta=5.13*sin(93.3+483202.02*T)+.28*sin(228.2+960400.89*T)-.28*sin(318.3+6003.15*T)-.17*sin(217.6-407332.21*T);
+  return eq(lam,beta,d)}
+const moonIllum=d=>(1-cos(sep(sunPos(d),moonPos(d))))/2;
+
+// Самопроверка по известным событиям
+{const d=t=>days(Date.parse(t));
+ console.assert(Math.abs(sunPos(d('2026-06-21T12:00Z')).dec-23.44)<.1,'солнцестояние');
+ console.assert(moonIllum(d('2026-08-12T17:46Z'))<.005,'новолуние в затмение 12.08.2026');
+ console.assert(moonIllum(d('2026-08-28T04:13Z'))>.99,'полнолуние 28.08.2026');
+ console.assert(Math.abs(alt(41.27,10,{ra:10,dec:41.27})-90)<.01,'зенит');}
+
+// ---------- Ночь и оценки ----------
+const STEP=3e5, N=288; // 5 минут × сутки, от местного солнечного полудня до следующего
+function night(lat,lon,dateStr){
+  const [y,m,d]=dateStr.split('-').map(Number);
+  const t0=Math.round((Date.UTC(y,m-1,d,12)-lon*24e4)/STEP)*STEP;
+  const s=[];
+  for(let i=0;i<N;i++){const t=t0+i*STEP,dd=days(t),L=lst(dd,lon);
+    s.push({i,t,L,sun:alt(lat,L,sunPos(dd)),moon:alt(lat,L,moonPos(dd))})}
+  const lim=s.some(x=>x.sun<-18)?-18:-12; // на высоких широтах летом астрономической ночи нет
+  const dark=s.filter(x=>x.sun<lim);
+  const mid=days((dark[dark.length>>1]||s[N/2]).t);
+  return {lat,s,dark,lim,moon:moonPos(mid),illum:moonIllum(mid)};
+}
+function stats(o,n,minAlt){
+  let k=0,max=-90,tMax=0,from=0,to=0,moonUp=0;
+  for(const x of n.dark){const a=alt(n.lat,x.L,o);
+    if(a>max){max=a;tMax=x.t}
+    if(a>=minAlt){k++;from=from||x.t;to=x.t;if(x.moon>0)moonUp++}}
+  return {h:k*STEP/36e5,max,tMax,from,to,moonFrac:k?moonUp/k:0,moonSep:sep(o,n.moon)};
+}
+const altTerm=max=>clamp((max-20)/50);
+// Лучшие месяцы для этой широты: где объект проводит выше minAlt в темноте не меньше 70% от своего максимума (по 15-м числам)
+const MONTHS=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+let yearKey, yearNights;
+function bestMonths(o,lat,lon,year,minAlt){
+  const key=lat+'|'+lon+'|'+year;
+  if(key!=yearKey){yearKey=key; yearNights=MONTHS.map((_,m)=>night(lat,lon,`${year}-${m+1}-15`))}
+  const h=yearNights.map(n=>stats(o,n,minAlt).h), max=Math.max(...h);
+  if(!max) return `не поднимается выше ${minAlt}° в тёмное время`;
+  const ok=h.map(x=>x>=.7*max); if(ok.every(Boolean)) return 'круглый год';
+  let a=h.indexOf(max), b=a; while(ok[(a+11)%12]) a=(a+11)%12; while(ok[(b+1)%12]) b=(b+1)%12;
+  return a==b?MONTHS[a]:MONTHS[a]+' – '+MONTHS[b];
+}
+// Поле зрения кадра в угловых минутах [длинная, короткая сторона] или null, если оборудование не задано
+function fieldOfView(focal,sensor){const [w,h]=(sensor||'').split('x').map(Number);
+  return focal>0&&w&&h?[w,h].map(x=>2*Math.atan(x/2/focal)/R*60):null}
+function photoScore(o,n,fov){const s=stats(o,n,PHOTO_ALT);
+  const moon=n.illum*s.moonFrac*MOON_SENS[o.type]*(s.moonSep<30?1:.7);
+  // fill — какую долю кадра занимает объект; идеал около 60%, мельче — теряется, крупнее кадра — уже мозаика
+  const fill=fov?Math.max(o.a/fov[0],o.b/fov[1]):null;
+  const fit=fov?(fill<=.6?Math.sqrt(fill/.6):fill<=1?1-.5*(fill-.6):.8/fill):clamp(Math.log10(o.a)/Math.log10(180));
+  const bright=.8+.2*clamp((18-surfB(o))/6); // тусклые объекты требуют больше выдержки
+  // 100 = восемь часов высоко в темноте без Луны, объект в размер кадра и яркий. Корень — чтобы короткие летние ночи не обнуляли весь список
+  return {...s,fill,score:100*Math.sqrt(Math.min(s.h,8)/8)*(.6+.4*altTerm(s.max))*(1-.8*moon)*(.4+.6*fit*PHOTO_TYPE[o.type])*bright};
+}
+const surfB=o=>o.mag+2.5*Math.log10(Math.PI/4*o.a*o.b); // средняя поверхностная яркость, mag/arcmin²
+// OIII затемняет фон на столько звёздных величин, почти не трогая объект. Туманности, светящие в основном в H-бета/H-альфа, на него не отзываются.
+const OIII_GAIN={PN:2.5,SNR:2.5,EN:1.5};
+const NO_OIII=new Set(['NGC 1499','IC 434','IC 5146','NGC 2024','IC 405']);
+function visualScore(o,n,bortle,aperture,oiii){const s=stats(o,n,VISUAL_ALT);
+  const sky=SKY[bortle]-8.89-3.5*n.illum*s.moonFrac            // mag/arcmin², Луна просто осветляет небо
+    +(oiii&&!NO_OIII.has(o.id)?OIII_GAIN[o.type]||0:0);
+  const sb=surfB(o)-(o.type=='OC'||o.type=='GC'?2.5:0) // скопления разрешаются на звёзды
+    -(SHOWPIECE[o.id]||0);
+  // Апертура D влияет четырьмя способами (все — эвристика, веса подобраны на глаз):
+  const D=aperture>0?aperture:0;
+  const gain=D?3*Math.log10(D/100):0;                         // 1) порог слабых объектов, 100 мм — ноль
+  const t=D?clamp(Math.log(D/70)/Math.log(250/70)):.5;        // 0 — бинокль, 1 — большой телескоп
+  const appeal=VIS_SMALL[o.type]+(VIS_LARGE[o.type]-VIS_SMALL[o.type])*t; // 2) что интереснее в такой инструмент
+  const field=D&&o.type!='G'?Math.min(1,25200/D/o.a):1;       // 3) влезает ли в поле при выходном зрачке 7 мм и окуляре 60°; галактики не штрафуем — у них смотрят ядро
+  const size=D?clamp(o.a*Math.min(2*D,300)/60,.3,1):1;        // 4) виден ли диск на предельном увеличении (нужен ~1° видимого размера)
+  const detect=clamp((sky+4.5+gain-sb)/8); // запас над порогом видимости; полный балл — только при запасе в 8 величин
+  // для глаза высота важна меньше, чем для съёмки: на 30–35° объект уже смотрится нормально
+  return {...s,score:Math.min(100,100*detect*Math.min(s.h,2)/2*(.6+.4*clamp((s.max-10)/40))*(.7+.3*clamp((10-o.mag)/8))*(o.id in SHOWPIECE?1.1:appeal)*field*size)};
+}
+// Объекты, на которые смотрят первыми в любой инструмент: вместо веса типа — ×1,1. Число — на сколько величин яркое ядро ярче средней поверхностной яркости
+// (иначе порог видимости, посчитанный по всей площади, занижает M42, M31 и подобные). Список и числа — экспертная оценка.
+const SHOWPIECE={M42:4,M31:2.5,M8:2,M17:2,M81:1.5,M82:1.5,M51:1,M104:1.5,M64:1,M94:1.5,'NGC 253':1.5,'NGC 3372':3,'NGC 2070':3,LMC:2,SMC:2,
+  M13:0,M45:0,M57:0,M27:0,M44:0,M22:0,M5:0,M3:0,M11:0,M7:0,M35:0,M37:0,'NGC 869/884':0,'NGC 5139':0,'NGC 104':0,'NGC 4755':0};
+const VIS_SMALL={OC:1,EN:.8,GC:.6,G:1,SNR:.6,RN:.6,PN:.8}; // галактикам вес не режем: слабые и так отсекает порог видимости
+const VIS_LARGE={OC:.7,EN:.9,GC:1,G:1,SNR:.9,RN:.8,PN:1};
+
+// ---------- Интерфейс ----------
+const $=id=>document.getElementById(id);
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let tab='photo', cat='Все';
+const CATS={'Все':null,'Звёздные скопления':['OC','GC'],'Галактики':['G'],'Туманности':['EN','RN','SNR','PN']};
+const TABS=['photo','visual','plan','done'];
+
+// ---------- План и журнал: {id объекта: {photo:{plan, done:'ГГГГ-ММ-ДД', exp, gear, img}, visual:{plan, done, note}}} ----------
+// img — id файла в хранилище артефакта (только на опубликованной странице).
+// Всегда пишется в localStorage (работает и в файле без сети); на опубликованной странице дополнительно — в личный документ
+// пользователя в базе артефакта, чтобы план был один на телефоне и компьютере.
+// записи первой версии журнала были плоскими {plan, seen, note} и относились к визуалу
+const migrate=l=>{for(const [id,e] of Object.entries(l)) if(!e.photo&&!e.visual) l[id]={visual:{plan:e.plan,done:e.seen,note:e.note}}; return l};
+let log={}; try{log=migrate(JSON.parse(localStorage.getItem('skylog')||'{}'))}catch{}
+let cloud=null, assetsApi=null, busy=false, again=false, cloudTimer;
+const ruDate=d=>d.split('-').reverse().join('.');
+const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
+  return [p.plan&&'фото в плане',p.done&&'снято '+ruDate(p.done)+(p.exp?', '+p.exp+' ч':'')+(p.sessions?', сессий: '+p.sessions:''),v.plan&&'визуал в плане',v.done&&'просмотрено '+ruDate(v.done)].filter(Boolean).join(' · ')};
+const rec=(id,kind)=>(log[id]||(log[id]={}))[kind]||(log[id][kind]={});
+// оборудование, выбранное сейчас в форме: модель смарт-телескопа или «фокусное + сенсор»
+const curGear=()=>$('scope').selectedIndex>0?$('scope').options[$('scope').selectedIndex].textContent
+  :$('focal').value&&$('sensor').value?`${$('focal').value} мм, сенсор ${$('sensor').value.replace('x','×')} мм`:'';
+// ---------- Снимки: в артефакте — хранилище артефакта, вне его (установленное приложение, файл) — IndexedDB этого устройства ----------
+const idb=(mode,fn)=>new Promise((res,rej)=>{const open=indexedDB.open('sky',1);
+  open.onupgradeneeded=()=>open.result.createObjectStore('photos');
+  open.onerror=()=>rej(open.error);
+  open.onsuccess=()=>{const rq=fn(open.result.transaction('photos',mode).objectStore('photos')); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error)}});
+const urls={}; // id → objectURL, чтобы не создавать его заново при каждой перерисовке
+const photos={
+  async put(file){
+    if(assetsApi) return (await assetsApi.upload(file)).id;
+    navigator.storage?.persist?.(); // просим браузер не вычищать данные при нехватке места
+    const id='local-'+Date.now().toString(36); await idb('readwrite',s=>s.put(file,id)); return id},
+  async url(id){return id.startsWith('local-')?urls[id]||(urls[id]=URL.createObjectURL(await idb('readonly',s=>s.get(id)))):'/_blob/'+id},
+  del(id){return Promise.resolve(id.startsWith('local-')?idb('readwrite',s=>s.delete(id)):assetsApi?.delete(id)).catch(()=>{})},
+};
+// картинки подставляются после отрисовки: адрес локального снимка узнаётся асинхронно; пропавший файл просто не показывается
+function showImgs(root){for(const img of root.querySelectorAll('img[data-img]')) photos.url(img.dataset.img).then(u=>{img.src=u;img.hidden=false}).catch(()=>{})}
+// свой снимок показываем и в карточке визуала, только для просмотра
+const shotImg=o=>{const i=log[o.id]?.photo?.img; return /^[\w-]{1,64}$/.test(i||'')?`<img data-img="${i}" alt="Мой снимок ${esc(o.id)}" hidden>`:''};
+function photoLog(o,e){
+  const gears=[...new Set([...[...$('scope').options].slice(1).map(x=>x.textContent),curGear(),e.gear].filter(Boolean))];
+  const img=/^[\w-]{1,64}$/.test(e.img||'')?e.img:'';
+  return `<label>Дата съёмки<input data-act="date" type="date" value="${esc(e.done||'')}"></label>
+      <label>Сессий<input data-act="sessions" type="number" min="1" step="1" value="${esc(String(e.sessions||''))}"></label>
+      <label>Суммарная выдержка, ч<input data-act="exp" type="number" min="0" step="0.5" value="${esc(String(e.exp||''))}"></label>
+      <label>Оборудование<select data-act="gear"><option value="">не указано</option>${gears.map(g=>`<option${g==e.gear?' selected':''}>${esc(g)}</option>`).join('')}</select></label>
+      <label>Фото результата<input data-act="img" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+      <img ${img?`data-img="${img}"`:''} alt="Результат съёмки ${esc(o.id)}" hidden>
+      <button type="button" data-act="unimg"${img?'':' hidden'}>Убрать фото</button>
+      <span class="status" role="status"></span>`;
+}
+// «unsent» — правки, которые ещё не подтверждены облаком: при следующем открытии они важнее облачной копии (поле без связи)
+function saveLocal(){try{localStorage.setItem('skylog',JSON.stringify(log));localStorage.setItem('skylog_unsent','1')}catch{}}
+async function pushCloud(){
+  if(!cloud)return; if(busy){again=true;return} busy=true; // база требует одну запись в документ за раз
+  try{await cloud.set({items:log}); if(!again)try{localStorage.removeItem('skylog_unsent')}catch{}
+    $('sync').textContent='План, отметки и заметки сохраняются в вашем аккаунте и видны на всех ваших устройствах.'}
+  catch{$('sync').textContent='Не удалось сохранить в облако. Изменения остались в этом браузере и отправятся при следующем открытии страницы.'}
+  busy=false; if(again){again=false;pushCloud()}
+}
+(async()=>{
+  const use=n=>window.claude?.use?.(n);
+  const [db,user,as]=await Promise.all([use('db'),use('user'),use('assets')]), uid=await user?.id?.();
+  assetsApi=as;
+  if(!db||!uid)return;
+  const ref=db.doc('data/users/'+uid+'/log');
+  try{const snap=await ref.get(); let unsent; try{unsent=localStorage.getItem('skylog_unsent')}catch{}
+    if(snap.exists&&!unsent){log=migrate(JSON.parse(JSON.stringify(snap.data().items||{}))); try{localStorage.setItem('skylog',JSON.stringify(log))}catch{} render()}
+    cloud=ref; pushCloud();
+  }catch{}
+})();
+$('cats').innerHTML=Object.keys(CATS).map(c=>`<button type="button" aria-pressed="${c==cat}">${c}</button>`).join('');
+$('cats').onclick=e=>{if(e.target.tagName!='BUTTON')return; cat=e.target.textContent;
+  for(const b of $('cats').children) b.setAttribute('aria-pressed',b==e.target); render()};
+$('city').innerHTML=CITIES.map((c,i)=>`<option value="${i}">${c.name}</option>`).join('')+'<option value="-1">Свои координаты</option>';
+$('bortle').innerHTML=['','1 — идеально тёмное','2 — тёмное','3 — сельское','4 — граница села и пригорода','5 — пригород','6 — светлый пригород','7 — окраина города','8 — город','9 — центр города']
+  .map((t,i)=>i?`<option value="${i}">${t}</option>`:'').join('');
+const now=new Date(); now.setHours(now.getHours()-12); // до полудня ещё идёт «вчерашняя» ночь
+$('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+let saved={}; try{saved=JSON.parse(localStorage.getItem('sky')||'{}')}catch{}
+$('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
+for(const id of ['focal','sensor','aperture']) $(id).value=saved[id]??'';
+$('oiii').checked=!!saved.oiii;
+function fillCity(){const c=CITIES[$('city').value]; if(c){$('lat').value=c.lat;$('lon').value=c.lon}}
+if($('city').value>=0) fillCity(); else {$('lat').value=saved.lat??55.75;$('lon').value=saved.lon??37.62}
+
+function render(){
+  const lat=parseFloat($('lat').value), lon=parseFloat($('lon').value), date=$('date').value, bortle=+$('bortle').value;
+  if(!(Math.abs(lat)<=90)||!(Math.abs(lon)<=180)||!date){
+    $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
+  const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
+  const fov=fieldOfView(focal,sensor);
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked}))}catch{}
+  const city=CITIES[$('city').value];
+  $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
+  const tf=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',timeZone:city?.tz}), hm=t=>tf.format(t);
+  const n=night(lat,lon,date);
+
+  // полоса ночи
+  const cls=x=>x.sun>0?'day':x.sun>-6?'civil':x.sun>-12?'naut':x.sun>-18?'astro':'night';
+  const grad=f=>{let out=[],prev;n.s.forEach((x,i)=>{const c=f(x);if(c!==prev){const p=(i/N*100).toFixed(2)+'%';if(prev)out.push(`${prev} ${p}`);out.push(`${c} ${p}`);prev=c}});
+    out.push(prev+' 100%');return `linear-gradient(to right,${out.join(',')})`};
+  $('bar').style.background=grad(x=>`var(--${cls(x)})`);
+  $('moonbar').style.background=grad(x=>x.moon>0?'var(--moon)':'transparent');
+  const moonPts=n.s.map(x=>`${x.i},${(90-Math.max(0,x.moon)).toFixed(1)}`).join(' ');
+  const ticksHtml=$('ticks').innerHTML=n.s.map(x=>{const s=hm(x.t);return s.endsWith(':00')&&parseInt(s)%3==0?`<span style="left:${x.i/N*100}%">${s.slice(0,2)}</span>`:''}).join('');
+  const moonTxt=`Луна освещена на ${Math.round(n.illum*100)}%`;
+  if(!n.dark.length){$('summary').textContent=`В эту дату здесь не темнеет: Солнце не опускается ниже −12°. ${moonTxt}.`;
+    $('list').innerHTML='<p class="empty">Тёмного времени нет — выберите другую дату или широту.</p>';return}
+  const d0=n.dark[0],d1=n.dark[n.dark.length-1], moonDark=n.dark.filter(x=>x.moon>0).length/n.dark.length;
+  $('summary').textContent=`${n.lim==-18?'Астрономическая ночь':'Полной темноты нет, только навигационные сумерки'}: ${hm(d0.t)}–${hm(d1.t)}, ${(n.dark.length*STEP/36e5).toFixed(1)} ч. `
+    +`${moonTxt}, над горизонтом ${Math.round(moonDark*100)}% этого времени. Время — ${city?'по поясу города':'по часам этого устройства'}.`
+    +(fov?` Поле кадра ${(fov[0]/60).toFixed(1)}°×${(fov[1]/60).toFixed(1)}°.`:'');
+
+  // список: на вкладках «Мой план» и «Журнал» — два раздела (фото и визуал), на остальных — один
+  const mine={plan:'plan',done:'done'}[tab];
+  const cards=kind=>{
+  const minAlt=kind=='photo'?PHOTO_ALT:VISUAL_ALT;
+  // поиск идёт по всему каталогу: без категории, без порога оценки, точное совпадение номера — первым
+  const norm=s=>s.toLowerCase().replace(/\s+/g,''), q=norm($('q').value), exact=o=>norm(o.id)==q;
+  // «Мой план» и «Журнал» показывают всё отмеченное, даже невидимое этой ночью, по порядку времени наилучшей высоты
+  const order=r=>r.h?r.tMax:9e15;
+  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&(q?norm(o.id+o.name).includes(q):!CATS[cat]||CATS[cat].includes(o.type))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
+    .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)).slice(0,q?30:mine?999:15);
+  return rows.length?rows.map(r=>{const o=r.o;
+    const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
+    const pts=alts.map((a,i)=>`${i},${(90-Math.max(0,a)).toFixed(1)}`).join(' ');
+    // восход/заход — первое пересечение горизонта за сутки от полудня до полудня
+    const cross=up=>{const i=alts.findIndex((a,i)=>i&&(alts[i-1]<0)==up&&(a>=0)==up);return i<0?'':(up?'восход ':'заход ')+hm(n.s[i].t)};
+    const riseSet=[cross(true),cross(false)].filter(Boolean).join(', ')||(alts[0]>0?'не заходит':'не восходит');
+    const e=log[o.id]?.[kind]||{};
+    // нашли поиском один объект или точный номер — карточка сразу раскрыта, чтобы снимок был виден без лишнего нажатия
+    return `<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o))?' open':''}><summary>
+      <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}, ${o.con}</small><small class="marks">${marks(o.id)}</small></span>
+      <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
+      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?` · ${r.fill>1?'не влезает: ':''}${Math.round(r.fill*100)}% кадра`:''}</span>
+      <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)}</span>
+    </summary><div class="chart">
+      <svg viewBox="0 0 ${N} 90" preserveAspectRatio="none" role="img" aria-label="Высота объекта за ночь">
+        <rect x="${d0.i}" y="0" width="${d1.i-d0.i}" height="90" fill="var(--night)"/>
+        <line x1="0" x2="${N}" y1="${90-minAlt}" y2="${90-minAlt}" stroke="var(--line)" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
+        <polyline points="${moonPts}" fill="none" stroke="var(--moon)" stroke-width="1" stroke-dasharray="2 3" opacity=".7" vector-effect="non-scaling-stroke"/>
+        <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="ticks">${ticksHtml}</div>
+      <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°. Блеск ${o.mag}<sup>m</sup>, размер ${o.a}′${o.b!=o.a?'×'+o.b+'′':''}.</p>
+    </div><div class="log" data-kind="${kind}">
+      <button type="button" data-act="plan" aria-pressed="${!!e.plan}">В план</button>
+      <button type="button" data-act="done" aria-pressed="${!!e.done}">${kind=='photo'?'Снято':'Просмотрено'}</button>
+      ${kind=='photo'?photoLog(o,e):`<textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(e.note||'')}</textarea>`+shotImg(o)}
+    </div></details>`}).join('')
+    :q&&!mine?'<p class="empty">В каталоге такого объекта нет.</p>'
+    :mine?`<p class="empty">Здесь пока пусто. Откройте карточку объекта на вкладке «${kind=='photo'?'Фото':'Визуал'}» и нажмите «${mine=='plan'?'В план':kind=='photo'?'Снято':'Просмотрено'}».</p>`
+    :`<p class="empty">Подходящих объектов нет${kind=='visual'?': мешает засветка или Луна. Попробуйте меньший класс по Бортлю':''}.</p>`};
+  $('list').innerHTML=mine?['photo','visual'].map(k=>`<h2>${k=='photo'?'Астрофото':'Визуал'}</h2>`+cards(k)).join(''):cards(tab);
+  showImgs($('list'));
+}
+$('city').onchange=()=>{fillCity();render()};
+for(const id of ['lat','lon']) $(id).oninput=()=>{$('city').value=-1;render()};
+$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('aperture').oninput=$('q').oninput=render;
+// Смарт-телескоп — это просто готовая пара «фокусное + сенсор»; ручная правка любого из них сбрасывает выбор модели
+const syncScope=()=>{$('scope').value=`${$('focal').value}|${$('sensor').value}`; if($('scope').selectedIndex<0)$('scope').value=''};
+$('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal').value=f;$('sensor').value=s} render()};
+$('sensor').onchange=$('focal').oninput=()=>{syncScope();render()};
+syncScope();
+$('f').onsubmit=e=>e.preventDefault();
+$('setup').open=!!window.matchMedia?.('(min-width:700px)').matches; // на широком экране форма сразу раскрыта
+// Отметки и заметки правят карточку на месте, без перерисовки списка: иначе раскрытая карточка схлопнется, а поле потеряет фокус
+function logChanged(card){const id=card.dataset.id, e=log[id];
+  for(const k of ['photo','visual']) if(e[k]&&!Object.values(e[k]).some(Boolean)) delete e[k];
+  if(!e.photo&&!e.visual) delete log[id];
+  card.querySelector('.marks').textContent=marks(id);
+  saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800)} // в облако — одной записью после паузы в наборе
+$('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)return;
+  const card=b.closest('details'), box=b.closest('.log'), kind=box.dataset.kind, r=rec(card.dataset.id,kind), act=b.dataset.act;
+  if(act=='unimg'){const img=box.querySelector('img'); photos.del(r.img); delete r.img; img.hidden=b.hidden=true; img.removeAttribute('src'); img.removeAttribute('data-img')}
+  else{r[act]=act=='plan'?!r.plan:r.done?'':$('date').value; // дата съёмки или просмотра — выбранный вечер
+    // при первой отметке «Снято» подставляем оборудование, выбранное в форме
+    if(act=='done'&&r.done&&kind=='photo'&&!r.gear&&curGear()){r.gear=curGear(); box.querySelector('[data-act=gear]').value=r.gear}
+    if(act=='done'){const d=box.querySelector('[data-act=date]'); if(d)d.value=r.done||''}
+    b.setAttribute('aria-pressed',!!r[act])}
+  logChanged(card)};
+$('list').oninput=ev=>{const t=ev.target, act=t.dataset.act; if(!['exp','gear','note','sessions','date'].includes(act))return;
+  const card=t.closest('details'), box=t.closest('.log');
+  rec(card.dataset.id,box.dataset.kind)[act=='date'?'done':act]=t.value;
+  if(act=='date') box.querySelector('[data-act=done]').setAttribute('aria-pressed',!!t.value); // дата съёмки и кнопка «Снято» — одно поле
+  logChanged(card)};
+$('list').onchange=async ev=>{const t=ev.target; if(t.dataset.act!='img'||!t.files[0])return;
+  const card=t.closest('details'), box=t.closest('.log'), st=box.querySelector('[role=status]'), img=box.querySelector('img');
+  st.textContent='Загружаю фото…';
+  try{const id=await photos.put(t.files[0]), r=rec(card.dataset.id,'photo'), old=r.img;
+    r.img=id; logChanged(card); if(old) photos.del(old); // замена: прежний файл больше ни на что не нужен
+    img.dataset.img=id; img.src=await photos.url(id); img.hidden=false; box.querySelector('[data-act=unimg]').hidden=false; st.textContent='';
+  }catch(e){st.textContent={too_large:'Файл больше 20 МБ — уменьшите его.',unsupported_type:'Подходят PNG, JPEG, WebP и GIF.',
+    quota_or_state:'Место для файлов на странице закончилось.'}[e?.code]||'Не удалось загрузить фото. Попробуйте ещё раз.'}
+  t.value=''};
+for(const t of TABS) $('tab-'+t).onclick=()=>{tab=t;
+  for(const u of TABS) $('tab-'+u).setAttribute('aria-selected',u==t); render()};
+render();
+// Офлайн-режим установленного приложения. В артефакте и в файле, открытом с диска, сервис-воркеры недоступны
+if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
