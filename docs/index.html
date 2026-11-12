@@ -1045,7 +1045,12 @@ let camRot=0; try{camRot=+localStorage.getItem('camRot')||0}catch{}
 function framePts(g,rot){const c=Math.cos(rot*R), s=Math.sin(rot*R);
   return [[g.w,g.h],[-g.w,g.h],[-g.w,-g.h],[g.w,-g.h]].map(([x,y])=>{let X=x*c-y*s-g.TL[0], Y=x*s+y*c-g.TL[1];
     return [(X*g.V[1]-Y*g.V[0])/g.det*100,(g.U[0]*Y-g.U[1]*X)/g.det*g.H]})}
-function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg){
+// контур объекта по каталогу в плоскости неба (ξ — к востоку, η — к северу, °): эллипс с наклоном pa (от севера через восток);
+// наклон неизвестен у вытянутого объекта — круг по большой оси, а не эллипс в случайном направлении
+function objOutline(o){const long=o.b<.8*o.a, known=o.pa!=null||!long, A=o.a/120, B=known?o.b/120:A, p=(o.pa||0)*R;
+  return Array.from({length:48},(_,i)=>{const t=i/48*2*Math.PI, x=A*Math.cos(t), y=B*Math.sin(t); return [x*Math.sin(p)+y*Math.cos(p),x*Math.cos(p)-y*Math.sin(p)]})}
+const outlineCap=o=>` · пунктир — объект по каталогу ${fmtR(o.a)}′×${fmtR(o.b)}′${o.pa==null&&o.b<.8*o.a?' (наклон не указан — круг по большой оси)':''}`;
+function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg,outline){
   const U=[TR[0]-TL[0],TR[1]-TL[1]], V=[BL[0]-TL[0],BL[1]-TL[1]], det=U[0]*V[1]-U[1]*V[0];
   const asp=Math.hypot(...V)/Math.hypot(...U), H=100*asp;
   const g={TL,U,V,det,H,w:fov[0]/120,h:fov[1]/120}, pts=framePts(g,camRot);
@@ -1060,6 +1065,7 @@ function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg){
     under=`<image href="${dssUrl(o,S,600)}" width="100" height="100" preserveAspectRatio="none" opacity=".45" transform="matrix(${m.map(v=>v.toFixed(4)).join(' ')})"/>`}
   return `<figure class="ref frame"><svg viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" style="aspect-ratio:${(vw/vh).toFixed(3)}" role="img" aria-label="Снимок объекта с рамкой вашего кадра">
     ${under}<image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"/><!-- без смешивания с подложкой: иначе серое небо DSS даёт на цветном снимке белёсую дымку -->
+    ${outline?`<polygon points="${objOutline(o).map(([x,y])=>{x-=TL[0]; y-=TL[1]; return [(x*V[1]-y*V[0])/det*100,(U[0]*y-U[1]*x)/det*H].map(v=>v.toFixed(2)).join(',')}).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 2" vector-effect="non-scaling-stroke"/>`:''}
     <polygon data-geo='${JSON.stringify(g)}' points="${pts.map(p=>p.map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="none" stroke="#7fd3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
     <label class="rot">Поворот кадра<input type="range" data-act="rot" min="0" max="179" step="1" value="${camRot}" aria-label="Поворот кадра на небе"><output>${camRot}°</output></label>
     <figcaption>${cap} · голубая рамка — ваш кадр ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}°: ${fitTip(o,fov,fill)}. Поворот 0° — длинная сторона по линии восток–запад; у смарт-телескопов на альт-азимутальной монтировке кадр за ночь поворачивается сам.</figcaption></figure>`}
@@ -1135,8 +1141,10 @@ function refImg(o,kind,fov,fill){
       return frameOverlay(o,fov,fill,url,tl,tr,T(0),cap+(fov[0]/60>imgW?' · вокруг — небо из обзора DSS2':''),fov[0]/60>imgW)}
     if(!wk){const S=+clamp(Math.max(refFov(o),fov[0]*1.25/60),.15,8).toFixed(2), s=S/2;
       const u=dssUrl(o,S,500);
-      return frameOverlay(o,fov,fill,u,[s,s],[-s,s],[s,-s],`Обзор DSS2, NASA SkyView · поле ${fmtR(S)}° · север сверху, восток слева`)}
-    return refImg(o,kind)+frameHtml(o,fov,fill)}
+      return frameOverlay(o,fov,fill,u,[s,s],[-s,s],[s,-s],`Обзор DSS2, NASA SkyView · поле ${fmtR(S)}° · север сверху, восток слева${outlineCap(o)}`,false,true)}
+    // у снимков из Википедии координат нет — рамку с поворотом показываем на DSS под цветным снимком
+    const S=+clamp(Math.max(fov[0]*1.25,o.a*1.3)/60,.15,8).toFixed(2), s=S/2;
+    return refImg(o,kind)+frameOverlay(o,fov,fill,dssUrl(o,S,500),[s,s],[-s,s],[s,-s],`Схема на обзоре DSS2 · поле ${fmtR(S)}° · север сверху, восток слева${outlineCap(o)}`,false,true)}
   return window.claude
     ?`<p><a href="${url}" target="_blank" rel="noopener">${st||wk?'Цветной снимок':'Снимок из обзора неба DSS2'}: ${esc(o.id)}</a> — откроется в браузере.</p>`
     :`<figure class="ref"><img src="${url}" loading="lazy" alt="${esc(o.id)}: ${st||wk?'цветной снимок':'снимок обзора неба DSS2'}"><figcaption>${cap}</figcaption></figure>`;
