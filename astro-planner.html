@@ -131,9 +131,13 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 /* на весь экран: слой поверх страницы (не системный полноэкранный режим — иначе красный ночной фильтр его не накрывает) */
 #map.full{position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto;padding:10px max(10px,env(safe-area-inset-right,0px)) 20px max(10px,env(safe-area-inset-left,0px))}
 /* карта занимает всё место между кнопками и списком; подпись прячем */
-#map.full{display:flex;flex-direction:column;gap:6px}
-#map.full svg{flex:1 0 auto;width:100%;max-width:none;height:min(100vw,calc(100dvh - 190px));min-height:280px}
-#map.full>p.sub{display:none}
+/* на весь экран — только карта и кнопка «Назад»; область карты подгоняется под пропорции экрана, поэтому она заполняет его целиком */
+#map.full{padding:0;overflow:hidden}
+#map.full>*:not(#mapSky):not(.mapback){display:none}
+#map.full svg{width:100vw;height:100dvh;max-width:none;margin:0}
+#map .mapback{display:none}
+#map.full .mapback{display:block;position:fixed;z-index:101;top:max(10px,env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));
+  font:inherit;font-size:15px;color:var(--fg);background:rgba(12,17,29,.75);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer}
 #map label{flex-direction:row;align-items:center;gap:8px;font-size:13px;margin:8px 0}
 #map input[type=range]{padding:0;border:0;background:none;accent-color:var(--accent)}
 .qrow{display:flex;gap:6px}
@@ -1040,7 +1044,9 @@ let mapIdx=null, mapKey='', mapView={z:1,cx:200,cy:200}, mapFull=false;
 let dssOn=false; try{dssOn=localStorage.getItem('dss')=='1'}catch{}
 let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,7.5)}catch{}
 const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
-function clampView(){const v=mapView; v.z=clamp(v.z,1,ZMAX); const h=200/v.z; v.cx=clamp(v.cx,h,400-h); v.cy=clamp(v.cy,h,400-h)}
+let mapK=1; // высота области карты к ширине: 1 — квадрат, на весь экран — пропорции экрана
+function clampView(){const v=mapView; v.z=clamp(v.z,1,ZMAX); const h=200/v.z, hh=h*mapK;
+  v.cx=clamp(v.cx,h,400-h); v.cy=hh>=200?200:clamp(v.cy,hh,400-hh)}
 let mapProj=null; // текущая проекция — для перехода к объекту по нажатию в списке
 function drawMap(n,lat,hm,L){
   const d0=n.dark[0].i, d1=n.dark[n.dark.length-1].i, key=lat+'|'+n.s[0].t;
@@ -1052,8 +1058,9 @@ function drawMap(n,lat,hm,L){
     if(sa<0) return null; const h=Math.asin(sa)/R, az=Math.atan2(-cd*Math.sin(H),sd*cl-cd*sl*Math.cos(H));
     const r=R0*(90-h)/90; return [200-r*Math.sin(az),200-r*Math.cos(az),h,(az/R+360)%360]};
   mapProj=P;
-  const z=mapView.z, half=200/z, vx=mapView.cx-half, vy=mapView.cy-half, u=1/z; // u — единица карты, которая на экране не меняется при приближении
-  const vis=p=>p&&p[0]>vx-10*u&&p[0]<vx+2*half+10*u&&p[1]>vy-10*u&&p[1]<vy+2*half+10*u;
+  mapK=mapFull?innerHeight/innerWidth:1; clampView();
+  const z=mapView.z, half=200/z, hh=half*mapK, vx=mapView.cx-half, vy=mapView.cy-hh, u=1/z; // u — единица карты, которая на экране не меняется при приближении
+  const vis=p=>p&&p[0]>vx-10*u&&p[0]<vx+2*half+10*u&&p[1]>vy-10*u&&p[1]<vy+2*hh+10*u;
   const f1=v=>v.toFixed(z>8?2:1), ns='vector-effect="non-scaling-stroke"';
   // предел блеска: при приближении растёт сам (×1 — до 5ᵐ, ×5 и ближе — до 7,5ᵐ), ползунок ограничивает его сверху
   const autoLim=Math.min(7.5,5+1.5*Math.log2(z)), magLim=Math.min(starLim,autoLim);
@@ -1090,16 +1097,16 @@ function drawMap(n,lat,hm,L){
   const up=objs.filter(q=>q.p).sort((a,b)=>b.p[2]-a.p[2]), down=objs.filter(q=>!q.p);
   const listHtml=L.ids.length?`<ul>${up.map(({o,p})=>`<li><button type="button" class="goto" data-id="${esc(o.id)}">${esc(o.id)}${o.name?' · '+esc(o.name):''}</button> — высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]} (азимут ${Math.round(p[3])}°)</li>`).join('')}
       ${down.map(({o})=>`<li>${esc(o.id)} — под горизонтом</li>`).join('')}</ul>`:'<p class="empty">В списке пока нет объектов — добавьте их кнопкой с названием списка в карточке объекта.</p>';
-  const vb=`${vx.toFixed(2)} ${vy.toFixed(2)} ${(2*half).toFixed(2)} ${(2*half).toFixed(2)}`, zTxt=z>1.05?`×${z<10?z.toFixed(1).replace('.',','):Math.round(z)}, поле ≈${fmtR(+(180*half/R0).toFixed(z>10?1:0))}°`:'всё небо';
+  const vb=`${vx.toFixed(2)} ${vy.toFixed(2)} ${(2*half).toFixed(2)} ${(2*hh).toFixed(2)}`, zTxt=z>1.05?`×${z<10?z.toFixed(1).replace('.',','):Math.round(z)}, поле ≈${fmtR(+(180*half/R0).toFixed(z>10?1:0))}°`:'всё небо';
   mapArgs=[n,lat,hm,L]; prefetchFields(L.ids);
   // при движении ползунка и масштабировании меняем только небо, время и список — ползунок не пересоздаём, иначе палец «соскакивает»
   const t=$('mapT');
   const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`;
   if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapZoom').textContent=zTxt; $('starTxt').textContent=starTxt; $('mapSky').setAttribute('viewBox',vb); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
-  $('map').innerHTML=`<div class="mapctl">
+  $('map').innerHTML=`<button type="button" class="mapback" data-z="full">← Назад</button><div class="mapctl">
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
-      <button type="button" data-z="full" aria-pressed="${mapFull}">${mapFull?'Свернуть':'На весь экран'}</button></div>
+      <button type="button" data-z="full">На весь экран</button></div>
     ${window.claude?'':`<label class="dssopt"><input type="checkbox" id="dss"${dssOn?' checked':''}> Снимки неба DSS вокруг объектов плана — звёзды слабее 14ᵐ для поиска через окуляр (~200 КБ на объект, скачиваются заранее, пока есть интернет)</label>`}
     <label><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
@@ -1110,17 +1117,20 @@ function drawMap(n,lat,hm,L){
 let mapArgs=null, mapRaf=0;
 // на весь экран: слой карты поверх страницы + системный полноэкранный режим для всего документа (прячет строку состояния и кнопки Android).
 // Полноэкранным делаем документ, а не саму карту — иначе красный ночной фильтр (body::after) её не накроет
-function setMapFull(on){mapFull=on; $('map').classList.toggle('full',on);
-  const b=document.querySelector('#map [data-z=full]'); if(b){b.textContent=on?'Свернуть':'На весь экран'; b.setAttribute('aria-pressed',on)}
+function setMapFull(on,fromHistory){mapFull=on; $('map').classList.toggle('full',on);
+  // запись в истории: жест «назад» Android сворачивает карту, а не закрывает приложение
+  if(on&&!fromHistory) history.pushState({mapFull:1},''); else if(!on&&!fromHistory&&history.state?.mapFull) history.back();
   try{if(on&&!document.fullscreenElement) document.documentElement.requestFullscreen?.({navigationUI:'hide'})?.catch(()=>{});
     if(!on&&document.fullscreenElement) document.exitFullscreen?.().catch(()=>{})}catch{}
   if(!on) $('map').scrollIntoView({block:'start'}); mapRedraw()}
 // вышли из полноэкранного режима жестом «назад» — сворачиваем и слой карты
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&mapFull) setMapFull(false)});
+addEventListener('popstate',()=>{if(mapFull) setMapFull(false,true)});
+addEventListener('resize',()=>{if(mapFull) mapRedraw()}); // поворот экрана
 const mapRedraw=()=>{if(!mapRaf&&mapArgs) mapRaf=requestAnimationFrame(()=>{mapRaf=0; drawMap(...mapArgs)})};
 // масштаб с сохранением точки под пальцем/курсором (x,y — в координатах карты)
 function zoomAt(f,x,y){const v=mapView, z0=v.z; v.z=clamp(z0*f,1,ZMAX); const k=z0/v.z; v.cx=x-(x-v.cx)*k; v.cy=y-(y-v.cy)*k; clampView(); mapRedraw()}
-const toMap=(svg,cx,cy)=>{const r=svg.getBoundingClientRect(), h=200/mapView.z; return [mapView.cx-h+(cx-r.left)/r.width*2*h, mapView.cy-h+(cy-r.top)/r.height*2*h]};
+const toMap=(svg,cx,cy)=>{const r=svg.getBoundingClientRect(), h=200/mapView.z, unit=2*h/r.width; return [mapView.cx-h+(cx-r.left)*unit, mapView.cy-h*mapK+(cy-r.top)*unit]};
 const ptrs=new Map(); let pinch0=null;
 $('map').addEventListener('pointerdown',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); pinch0=null});
 $('map').addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return; const svg=$('mapSky'), prev=ptrs.get(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]);
