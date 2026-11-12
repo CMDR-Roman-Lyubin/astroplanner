@@ -988,12 +988,18 @@ function drawMap(n,lat,hm,L){
   for(const {o,p} of objs) if(p) svg+=`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="5" fill="none" stroke="var(--accent)" stroke-width="1.6"/>`
     +`<text x="${(p[0]+7).toFixed(1)}" y="${(p[1]-6).toFixed(1)}" font-size="11" font-weight="600" fill="var(--accent)">${esc(o.id)}</text>`;
   const up=objs.filter(z=>z.p).sort((a,b)=>b.p[2]-a.p[2]), down=objs.filter(z=>!z.p);
-  $('map').innerHTML=`<label>Время: <strong>${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
-    <svg viewBox="0 0 400 400" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
+  const listHtml=L.ids.length?`<ul>${up.map(({o,p})=>`<li>${esc(o.id)}${o.name?' · '+esc(o.name):''} — высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]} (азимут ${Math.round(p[3])}°)</li>`).join('')}
+      ${down.map(({o})=>`<li>${esc(o.id)} — под горизонтом</li>`).join('')}</ul>`:'<p class="empty">В списке пока нет объектов — добавьте их кнопкой с названием списка в карточке объекта.</p>';
+  mapArgs=[n,lat,hm,L];
+  // при движении ползунка меняем только небо, время и список — сам ползунок не пересоздаём, иначе палец «соскакивает» с него
+  const t=$('mapT');
+  if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
+  $('map').innerHTML=`<label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
+    <svg id="mapSky" viewBox="0 0 400 400" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
     <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, север сверху, восток слева. Пунктир — высота 30° и 60°.</p>
-    ${L.ids.length?`<ul>${up.map(({o,p})=>`<li>${esc(o.id)}${o.name?' · '+esc(o.name):''} — высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]} (азимут ${Math.round(p[3])}°)</li>`).join('')}
-      ${down.map(({o})=>`<li>${esc(o.id)} — под горизонтом</li>`).join('')}</ul>`:'<p class="empty">В списке пока нет объектов — добавьте их кнопкой с названием списка в карточке объекта.</p>'}`;
+    <div id="mapList">${listHtml}</div>`;
 }
+let mapArgs=null, mapRaf=0;
 function render(){
   const lat=parseFloat($('lat').value), lon=parseFloat($('lon').value), date=$('date').value, bortle=+$('bortle').value;
   if(!(Math.abs(lat)<=90)||!(Math.abs(lon)<=180)||!date){
@@ -1159,7 +1165,9 @@ $('listNew').onclick=()=>{const l={id:newId(),name:'Список '+(lists.filter
 $('listDel').onclick=()=>{const b=$('listDel');
   if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?'; setTimeout(()=>b.textContent='Удалить список',3000); return}
   b.textContent='Удалить список'; const L=listOf(mode); lists=lists.filter(l=>l!=L); curList[mode]=null; saveLocal(); pushCloud(); render()};
-$('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; render()}};
+// не чаще кадра экрана и без полной перерисовки страницы
+$('map').oninput=e=>{if(e.target.id!='mapT'||!mapArgs)return; mapIdx=+e.target.value;
+  if(!mapRaf) mapRaf=requestAnimationFrame(()=>{mapRaf=0; drawMap(...mapArgs)})};
 render();
 
 // ---------- Фон: звёзды летят навстречу из центра экрана ----------
@@ -1213,5 +1221,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 14 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 15 от 12.11.2026";v.hidden=false}</script>
 </body></html>
