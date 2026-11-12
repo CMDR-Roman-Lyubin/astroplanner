@@ -70,8 +70,20 @@ summary::-webkit-details-marker{display:none}
 main{position:relative;z-index:1}
 details{background:var(--card)}
 header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-#fly{flex:none;font:inherit;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
-#fly[aria-pressed=true]{color:var(--fg);border-color:var(--accent)}
+.hbtns{flex:none;display:flex;gap:6px}
+.hbtns button{font:inherit;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
+.hbtns button[aria-pressed=true]{color:var(--fg);border-color:var(--accent)}
+/* Ночной режим: красный слой «умножения» поверх всего оставляет от каждого цвета только красную составляющую —
+   интерфейс, снимки и звёзды становятся оттенками красного и не сбивают темновую адаптацию глаз */
+html.red{--muted:#c2c8d6} /* после фильтра серые подписи иначе почти не видны */
+html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-blend-mode:multiply;pointer-events:none;z-index:2147483647}
+.ref{margin:10px 0 0}
+.ref img{display:block;width:100%;max-width:360px;aspect-ratio:1;background:var(--night);border-radius:6px}
+.ref figcaption{margin-top:4px;font-size:12px;color:var(--muted)}
+.audios{flex-basis:100%;display:flex;flex-direction:column;gap:6px}
+.audios .aud{display:flex;align-items:center;gap:6px}
+.audios audio{flex:1;min-width:0;height:36px}
+.log button[data-act=rec][aria-pressed=true]{color:#fff;background:#b3261e;border-color:#b3261e}
 </style>
 <canvas id="stars" aria-hidden="true"></canvas>
 
@@ -81,7 +93,10 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:12p
     <h1>Небо на ночь</h1>
     <p class="sub">Объекты дальнего космоса, которые лучше всего снимать и наблюдать в выбранную ночь.</p>
     </div>
-    <button type="button" id="fly" aria-pressed="false" title="Анимация фона. У телескопа лучше выключить, чтобы не сбивать ночное зрение">Полёт</button>
+    <div class="hbtns">
+      <button type="button" id="red" aria-pressed="false" title="Ночной режим: весь экран в оттенках красного, чтобы не сбивать ночное зрение">Красный</button>
+      <button type="button" id="fly" aria-pressed="false" title="Анимация фона. У телескопа лучше выключить, чтобы не сбивать ночное зрение">Полёт</button>
+    </div>
   </header>
 
   <details id="setup"><summary id="setupSum">Место, дата и оборудование</summary>
@@ -394,6 +409,7 @@ const CITIES=`Москва;55.75;37.62;Europe/Moscow
 Волгоград;48.71;44.51;Europe/Volgograd
 Краснодар;45.04;38.98;Europe/Moscow
 Сочи;43.59;39.72;Europe/Moscow
+Пятигорск;44.04;43.06;Europe/Moscow
 Иркутск;52.29;104.3;Asia/Irkutsk
 Владивосток;43.12;131.89;Asia/Vladivostok
 Хабаровск;48.48;135.07;Asia/Vladivostok
@@ -545,7 +561,7 @@ const fmtDate=v=>v?new Date(v+'T12:00Z').toLocaleDateString('ru',{day:'numeric',
 document.addEventListener('input',e=>{if(e.target.matches?.('.datebox input')) e.target.previousElementSibling.textContent=fmtDate(e.target.value)});
 document.addEventListener('click',e=>{if(e.target.matches?.('.datebox input')) try{e.target.showPicker()}catch{}}); // на компьютере иначе клик лишь ставит курсор
 const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
-  return [p.plan&&'фото в плане',p.done&&'снято '+ruDate(p.done)+(p.exp?', '+p.exp+' ч':'')+(p.sessions?', сессий: '+p.sessions:''),v.plan&&'визуал в плане',v.done&&'просмотрено '+ruDate(v.done)].filter(Boolean).join(' · ')};
+  return [p.plan&&'фото в плане',p.done&&'снято '+ruDate(p.done)+(p.exp?', '+p.exp+' ч':'')+(p.sessions?', сессий: '+p.sessions:''),v.plan&&'визуал в плане',v.done&&'просмотрено '+ruDate(v.done),v.audio?.length&&'аудио: '+v.audio.length].filter(Boolean).join(' · ')};
 const rec=(id,kind)=>(log[id]||(log[id]={}))[kind]||(log[id][kind]={});
 // оборудование, выбранное сейчас в форме: модель смарт-телескопа или «фокусное + сенсор»
 const curGear=()=>$('scope').selectedIndex>0?$('scope').options[$('scope').selectedIndex].textContent
@@ -557,15 +573,57 @@ const idb=(mode,fn)=>new Promise((res,rej)=>{const open=indexedDB.open('sky',1);
   open.onsuccess=()=>{const rq=fn(open.result.transaction('photos',mode).objectStore('photos')); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error)}});
 const urls={}; // id → objectURL, чтобы не создавать его заново при каждой перерисовке
 const photos={
-  async put(file){
-    if(assetsApi) return (await assetsApi.upload(file)).id;
+  async put(file){return assetsApi?(await assetsApi.upload(file)).id:photos.putLocal(file)},
+  async putLocal(blob){ // аудиозаписи всегда живут только на устройстве
     navigator.storage?.persist?.(); // просим браузер не вычищать данные при нехватке места
-    const id='local-'+Date.now().toString(36); await idb('readwrite',s=>s.put(file,id)); return id},
+    const id='local-'+Date.now().toString(36); await idb('readwrite',s=>s.put(blob,id)); return id},
   async url(id){return id.startsWith('local-')?urls[id]||(urls[id]=URL.createObjectURL(await idb('readonly',s=>s.get(id)))):'/_blob/'+id},
   del(id){return Promise.resolve(id.startsWith('local-')?idb('readwrite',s=>s.delete(id)):assetsApi?.delete(id)).catch(()=>{})},
 };
 // картинки подставляются после отрисовки: адрес локального снимка узнаётся асинхронно; пропавший файл просто не показывается
-function showImgs(root){for(const img of root.querySelectorAll('img[data-img]')) photos.url(img.dataset.img).then(u=>{img.src=u;img.hidden=false}).catch(()=>{})}
+function showImgs(root){
+  for(const img of root.querySelectorAll('img[data-img]')) photos.url(img.dataset.img).then(u=>{img.src=u;img.hidden=false}).catch(()=>{});
+  for(const a of root.querySelectorAll('audio[data-aud]')) photos.url(a.dataset.aud).then(u=>{a.src=u;a.closest('.aud').hidden=false}).catch(()=>{})}
+// ---------- Диктофон для визуальных наблюдений: записи лежат на устройстве, ссылки на них — в visual.audio ----------
+// В окне claude.ai микрофон закрыт для страницы, поэтому запись есть только в установленном приложении
+const canRec=!window.claude&&!!navigator.mediaDevices?.getUserMedia&&!!window.MediaRecorder;
+const audHtml=id=>/^[\w-]{1,64}$/.test(id)?`<span class="aud" hidden><audio data-aud="${id}" controls preload="metadata"></audio><button type="button" data-act="unaud" data-id="${id}">Удалить</button></span>`:'';
+const audioLog=e=>`<div class="audios">${(e.audio||[]).map(audHtml).join('')}</div>
+      ${canRec?`<button type="button" data-act="rec" aria-pressed="${!!recState}">${recState?'■ Стоп':'● Запись'}</button>`
+        :'<span class="status">Голосовые заметки записываются в установленном приложении.</span>'}
+      <span class="status" role="status"></span>`;
+let recState=null;
+const mmss=ms=>{const s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+async function toggleRec(btn,card,box){
+  if(recState){recState.mr.stop();return}
+  const st=box.querySelector('[role=status]'); let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
+  catch{st.textContent='Нет доступа к микрофону. Разрешите его для приложения в настройках Android.';return}
+  const mr=new MediaRecorder(stream), chunks=[], t0=Date.now(), id=card.dataset.id;
+  const tick=setInterval(()=>{for(const b of document.querySelectorAll('[data-act=rec][aria-pressed=true]')) b.textContent='■ Стоп '+mmss(Date.now()-t0)},500);
+  mr.ondataavailable=ev=>{if(ev.data.size)chunks.push(ev.data)};
+  mr.onstop=async()=>{
+    stream.getTracks().forEach(t=>t.stop()); clearInterval(tick); recState=null;
+    for(const b of document.querySelectorAll('[data-act=rec]')){b.textContent='● Запись'; b.setAttribute('aria-pressed',false)}
+    const blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'}); if(!blob.size)return;
+    try{const aid=await photos.putLocal(blob), r=rec(id,'visual'); (r.audio||(r.audio=[])).push(aid);
+      // карточку могли перерисовать, пока шла запись, — ищем её текущую копию
+      const c=[...document.querySelectorAll('#list details')].find(d=>d.dataset.id==id&&d.querySelector('.log[data-kind=visual]'));
+      if(c){c.querySelector('.audios').insertAdjacentHTML('beforeend',audHtml(aid)); showImgs(c); logChanged(c)} else{saveLocal(); pushCloud()}
+    }catch{st.textContent='Не удалось сохранить запись.'}};
+  mr.start(1000); recState={mr}; // порциями по секунде: если приложение выгрузят, большая часть записи уже будет в памяти
+  btn.setAttribute('aria-pressed',true); btn.textContent='■ Стоп 0:00'; st.textContent='';
+}
+// ---------- Вид объекта из обзора неба: DSS2 (красный фильтр) через NASA SkyView ----------
+// Сервер CDS (hips2fits) из России не отвечает, SkyView отвечает за 3–6 с. Поле — в 1,6 раза больше объекта, от 0,15° до 3°.
+// В окне claude.ai чужие картинки запрещены, поэтому там только ссылка. Карточки свёрнуты, а loading=lazy грузит снимок лишь при раскрытии
+const refFov=o=>+clamp(o.a*1.6/60,.15,3).toFixed(2);
+const refUrl=o=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${refFov(o)}&Pixels=500&Return=JPEG`;
+const refImg=o=>window.claude
+  ?`<p><a href="${refUrl(o)}" target="_blank" rel="noopener">Снимок ${esc(o.id)} из обзора неба DSS2</a> — откроется в браузере.</p>`
+  :`<figure class="ref"><img src="${refUrl(o)}" loading="lazy" alt="${esc(o.id)} на снимке обзора неба DSS2">
+      <figcaption>Обзор DSS2, NASA SkyView · поле ${String(refFov(o)).replace('.',',')}° · север сверху, восток слева</figcaption></figure>`;
+document.addEventListener('error',e=>{const f=e.target.closest?.('.ref'); if(f) f.querySelector('figcaption').textContent='Снимок из обзора не загрузился: нужен интернет, хотя бы один раз для этого объекта.'},true);
 // свой снимок показываем и в карточке визуала, только для просмотра
 const shotImg=o=>{const i=log[o.id]?.photo?.img; return /^[\w-]{1,64}$/.test(i||'')?`<img data-img="${i}" alt="Мой снимок ${esc(o.id)}" hidden>`:''};
 function photoLog(o,e){
@@ -679,10 +737,11 @@ function render(){
       </svg>
       <div class="ticks">${ticksHtml}</div>
       <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°. Блеск ${o.mag}<sup>m</sup>, размер ${o.a}′${o.b!=o.a?'×'+o.b+'′':''}.</p>
+      ${refImg(o)}
     </div><div class="log" data-kind="${kind}">
       <button type="button" data-act="plan" aria-pressed="${!!e.plan}">В план</button>
       <button type="button" data-act="done" aria-pressed="${!!e.done}">${kind=='photo'?'Снято':'Просмотрено'}</button>
-      ${kind=='photo'?photoLog(o,e):`<textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(e.note||'')}</textarea>`+shotImg(o)}
+      ${kind=='photo'?photoLog(o,e):`<textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(e.note||'')}</textarea>`+audioLog(e)+shotImg(o)}
     </div></details>`}).join('')
     :q&&!mine?'<p class="empty">В каталоге такого объекта нет.</p>'
     :mine?`<p class="empty">Здесь пока пусто. Откройте карточку объекта на вкладке «${kind=='photo'?'Фото':'Визуал'}» и нажмите «${mine=='plan'?'В план':kind=='photo'?'Снято':'Просмотрено'}».</p>`
@@ -702,13 +761,18 @@ $('f').onsubmit=e=>e.preventDefault();
 $('setup').open=!!window.matchMedia?.('(min-width:700px)').matches; // на широком экране форма сразу раскрыта
 // Отметки и заметки правят карточку на месте, без перерисовки списка: иначе раскрытая карточка схлопнется, а поле потеряет фокус
 function logChanged(card){const id=card.dataset.id, e=log[id];
+  if(e.visual?.audio&&!e.visual.audio.length) delete e.visual.audio;
   for(const k of ['photo','visual']) if(e[k]&&!Object.values(e[k]).some(Boolean)) delete e[k];
   if(!e.photo&&!e.visual) delete log[id];
   card.querySelector('.marks').textContent=marks(id);
   saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800)} // в облако — одной записью после паузы в наборе
 $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)return;
   const card=b.closest('details'), box=b.closest('.log'), kind=box.dataset.kind, r=rec(card.dataset.id,kind), act=b.dataset.act;
-  if(act=='unimg'){const img=box.querySelector('img'); photos.del(r.img); delete r.img; img.hidden=b.hidden=true; img.removeAttribute('src'); img.removeAttribute('data-img')}
+  if(act=='rec'){toggleRec(b,card,box);return}
+  if(act=='unaud'){ // удаление безвозвратно, поэтому в два нажатия
+    if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?';setTimeout(()=>b.textContent='Удалить',3000);return}
+    photos.del(b.dataset.id); r.audio=(r.audio||[]).filter(x=>x!=b.dataset.id); b.closest('.aud').remove()}
+  else if(act=='unimg'){const img=box.querySelector('img'); photos.del(r.img); delete r.img; img.hidden=b.hidden=true; img.removeAttribute('src'); img.removeAttribute('data-img')}
   else{r[act]=act=='plan'?!r.plan:r.done?'':$('date').value; // дата съёмки или просмотра — выбранный вечер
     // при первой отметке «Снято» подставляем оборудование, выбранное в форме
     if(act=='done'&&r.done&&kind=='photo'&&!r.gear&&curGear()){r.gear=curGear(); box.querySelector('[data-act=gear]').value=r.gear}
@@ -768,6 +832,12 @@ render();
   let pref=null; try{pref=localStorage.getItem('fly')}catch{}
   set(pref?pref=='1':!matchMedia('(prefers-reduced-motion: reduce)').matches);
   $('fly').onclick=()=>set($('fly').getAttribute('aria-pressed')!='true');
+  // ночной режим запоминается; при его включении полёт останавливаем — у телескопа мелькание ни к чему
+  const red=on=>{document.documentElement.classList.toggle('red',on); $('red').setAttribute('aria-pressed',on);
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content',on?'#000000':'#0c111d');
+    try{localStorage.setItem('red',on?'1':'0')}catch{}};
+  let r0=null; try{r0=localStorage.getItem('red')}catch{} red(r0=='1');
+  $('red').onclick=()=>{const on=!document.documentElement.classList.contains('red'); red(on); if(on) set(false)};
 })();
 // Офлайн-режим установленного приложения. В артефакте и в файле, открытом с диска, сервис-воркеры недоступны
 if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
