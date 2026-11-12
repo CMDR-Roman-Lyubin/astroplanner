@@ -1112,14 +1112,17 @@ const mapRedraw=()=>{if(!mapRaf&&mapArgs) mapRaf=requestAnimationFrame(()=>{mapR
 // масштаб с сохранением точки под пальцем/курсором (x,y — в координатах карты)
 function zoomAt(f,x,y){const v=mapView, z0=v.z; v.z=clamp(z0*f,1,ZMAX); const k=z0/v.z; v.cx=x-(x-v.cx)*k; v.cy=y-(y-v.cy)*k; clampView(); mapRedraw()}
 const toMap=(svg,cx,cy)=>{const r=svg.getBoundingClientRect(), h=200/mapView.z, unit=2*h/r.width; return [mapView.cx-h+(cx-r.left)*unit, mapView.cy-h*mapK+(cy-r.top)*unit]};
-const ptrs=new Map(); let pinch0=null;
-$('map').addEventListener('pointerdown',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); pinch0=null});
+const ptrs=new Map(); let pinch0=null, tap=null; // tap — касание одним пальцем без сдвига: открывает карту на весь экран
+$('map').addEventListener('pointerdown',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); pinch0=null;
+  tap=ptrs.size==1?{id:e.pointerId,x:e.clientX,y:e.clientY}:null});
 $('map').addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return; const svg=$('mapSky'), prev=ptrs.get(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]);
   const r=svg.getBoundingClientRect(), unit=400/mapView.z/r.width;
   if(ptrs.size==1){mapView.cx-=(e.clientX-prev[0])*unit; mapView.cy-=(e.clientY-prev[1])*unit; clampView(); mapRedraw(); return}
   const [a,b]=[...ptrs.values()], dist=Math.hypot(a[0]-b[0],a[1]-b[1]);
   if(pinch0) zoomAt(dist/pinch0,...toMap(svg,(a[0]+b[0])/2,(a[1]+b[1])/2)); pinch0=dist});
-for(const ev of ['pointerup','pointercancel']) $('map').addEventListener(ev,e=>{ptrs.delete(e.pointerId); pinch0=null});
+for(const ev of ['pointerup','pointercancel']) $('map').addEventListener(ev,e=>{ptrs.delete(e.pointerId); pinch0=null;
+  if(ev=='pointerup'&&tap?.id==e.pointerId&&!mapFull&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<8) setMapFull(true);
+  if(tap?.id==e.pointerId) tap=null});
 $('map').addEventListener('wheel',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; e.preventDefault(); zoomAt(e.deltaY<0?1.25:.8,...toMap(svg,e.clientX,e.clientY))},{passive:false});
 $('map').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return;
   const z=b.dataset.z;
@@ -1443,5 +1446,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 27 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 28 от 12.11.2026";v.hidden=false}</script>
 </body></html>
