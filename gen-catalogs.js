@@ -11,7 +11,7 @@ const SRC = {
 };
 // Звёзды и линии созвездий для карты неба — из d3-celestial (BSD-3), координаты в градусах
 const CEL = 'https://cdn.jsdelivr.net/npm/d3-celestial@0.7.35/data/';
-const CEL_FILES = ['stars.6.json', 'constellations.lines.json', 'constellations.json'];
+const CEL_FILES = ['stars.8.json', 'stars.6.json', 'constellations.lines.json', 'constellations.json'];
 const MIN_DEC = -30;
 
 // Порядок — как в Stellarium; [ключ, подпись, префикс в names.dat, формат обозначения]
@@ -138,9 +138,9 @@ async function src(name) {
     extra.set(id, [id, (nm ? nm.n : '').replace(/[;`\\$]/g, ' '), type, (+r[1] / 15).toFixed(4), dec.toFixed(3), (est ? '~' : '') + +mag.toFixed(1),
       +a.toFixed(2), +b.toFixed(2), mask.toString(36), order.slice(1).map(x => x[1]).join(',')].join(';'));
   }
-  // Карта неба: звёзды до 5ᵐ «RA,Dec,блеск» через «;», линии созвездий — ломаные «RA,Dec,RA,Dec…» через «;», подписи — «имя,RA,Dec»
+  // Карта неба: звёзды до 7,5ᵐ (слабые видны только при приближении) «RA,Dec,блеск» через «;», линии созвездий — ломаные «RA,Dec,RA,Dec…» через «;», подписи — «имя,RA,Dec»
   const ra = x => +((x + 360) % 360).toFixed(1), d1 = x => +x.toFixed(1);
-  const stars = JSON.parse(await src('stars.6.json')).features.filter(f => f.properties.mag <= 5)
+  const stars = JSON.parse(await src('stars.8.json')).features.filter(f => f.properties.mag <= 7.5)
     .map(f => [ra(f.geometry.coordinates[0]), d1(f.geometry.coordinates[1]), d1(f.properties.mag)].join(',')).join(';');
   const lines = JSON.parse(await src('constellations.lines.json')).features.flatMap(f => f.geometry.coordinates)
     .map(l => l.flatMap(([x, y]) => [ra(x), d1(y)]).join(',')).join(';');
