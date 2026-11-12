@@ -87,6 +87,8 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .ref{margin:10px 0 0}
 .ref img{display:block;width:100%;max-width:360px;aspect-ratio:1;background:var(--night);border-radius:6px}
 .ref figcaption{margin-top:4px;font-size:12px;color:var(--muted)}
+.chart .frame svg{display:block;width:100%;max-width:360px;height:auto;aspect-ratio:1;background:#000;border-radius:6px} /* .chart svg задаёт 90px для графика высоты — здесь квадрат */
+.warn{color:#ff9f6b}
 .audios{flex-basis:100%;display:flex;flex-direction:column;gap:6px}
 .audios .aud{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .audios audio{flex:1 1 100%;min-width:0;height:36px} /* плеер на всю ширину, кнопки записи — строкой под ним */
@@ -652,11 +654,12 @@ function photoScore(o,n,fov){const s=stats(o,n,PHOTO_ALT);
   const moon=n.illum*s.moonFrac*MOON_SENS[o.type]*(s.moonSep<30?1:.7);
   // fill — какую долю кадра занимает объект; идеал около 60%, мельче — теряется, крупнее кадра — уже мозаика
   const fill=fov?Math.max(o.a/fov[0],o.b/fov[1]):null;
-  const fit=fov?(fill<=.6?Math.sqrt(fill/.6):fill<=1?1-.5*(fill-.6):.8/fill):clamp(Math.log10(o.a)/Math.log10(180));
+  // мелкий объект в широком кадре — степень .75 (при 10% кадра остаётся четверть), шире кадра — нужна мозаика
+  const fit=fov?(fill<=.6?Math.max(.05,(fill/.6)**.75):fill<=1?1-.5*(fill-.6):.8/fill):clamp(Math.log10(o.a)/Math.log10(180));
   const bright=.8+.2*clamp((18-surfB(o))/6); // тусклые объекты требуют больше выдержки
   // 100 = восемь часов высоко в темноте без Луны, объект в размер кадра и яркий. Корень — чтобы короткие летние ночи не обнуляли весь список
   // блеск не из каталога, а оценка по типу (тусклые области HII, тёмные туманности) — не ставим такие выше проверенных
-  return {...s,fill,score:100*Math.sqrt(Math.min(s.h,8)/8)*(.6+.4*altTerm(s.max))*(1-.8*moon)*(.4+.6*fit*PHOTO_TYPE[o.type])*bright*(o.est?.8:1)};
+  return {...s,fill,score:100*Math.sqrt(Math.min(s.h,8)/8)*(.6+.4*altTerm(s.max))*(1-.8*moon)*(.3+.7*fit*PHOTO_TYPE[o.type])*bright*(o.est?.8:1)};
 }
 const surfB=o=>o.mag+2.5*Math.log10(Math.PI/4*o.a*o.b); // средняя поверхностная яркость, mag/arcmin²
 // OIII затемняет фон на столько звёздных величин, почти не трогая объект. Туманности, светящие в основном в H-бета/H-альфа, на него не отзываются.
@@ -895,6 +898,26 @@ const STELL={"M1":["m1dumont.png","Stephane Dumont"],"M2":["m2.png","Starhopper"
 // ---------- Вид объекта из обзора неба: DSS2 (красный фильтр) через NASA SkyView ----------
 // Сервер CDS (hips2fits) из России не отвечает, SkyView отвечает за 3–6 с. Поле — в 1,6 раза больше объекта, от 0,15° до 3°.
 // В окне claude.ai чужие картинки запрещены, поэтому там только ссылка. Карточки свёрнуты, а loading=lazy грузит снимок лишь при раскрытии
+// ---------- Объект в кадре (астрофото) ----------
+const mosaic=(o,fov)=>[Math.ceil(o.a/fov[0]*1.1),Math.ceil(o.b/fov[1]*1.1)]; // кадров по длинной и короткой стороне, с перекрытием 10%
+// коротко для строки карточки: доля кадра, «не помещается» — с мозаикой, «мелко» — с подсказкой фокусного
+function fillNote(o,fill,fov){const p=Math.round(fill*100);
+  if(fill>1){const [m,n]=mosaic(o,fov); return `<span class="warn">⚠ не помещается в кадр (${p}%) — нужна мозаика ${m}×${n}</span>`}
+  return fill<.15?`<span class="warn">мелко: ${p}% кадра</span>`:`${p}% кадра`}
+// схема: снимок DSS в масштабе, рамка кадра (камера без поворота, длинная сторона по горизонтали) и контур объекта.
+// Поле схемы — чуть больше и кадра, и объекта; север сверху, восток слева
+function frameHtml(o,fov,fill){
+  const S=+clamp(Math.max(fov[0]*1.25,o.a*1.3)/60,.1,8).toFixed(2), k=100/(S*60); // градусы поля схемы; единиц схемы на угловую минуту
+  const fw=fov[0]*k, fh=fov[1]*k, rx=Math.max(o.a*k/2,.6), ry=Math.max(o.b*k/2,.6), f=Math.round(+$('focal').value||0);
+  const img=window.claude?'':`<image href="https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=500&Return=JPEG" width="100" height="100" opacity=".9"/>`;
+  const [m,n]=fill>1?mosaic(o,fov):[1,1];
+  const tip=fill>1?`объект шире кадра — нужна мозаика ${m}×${n} кадров или фокусное покороче (около ${Math.round(f*.6/fill)} мм)`
+    :fill<.15?`объект занимает ${Math.round(fill*100)}% кадра — для крупного плана нужно фокусное около ${Math.round(f*.6/fill)} мм`
+    :`объект занимает ${Math.round(fill*100)}% кадра — хорошо`;
+  return `<figure class="ref frame"><svg viewBox="0 0 100 100" role="img" aria-label="Как объект помещается в кадр">${img}
+    <ellipse cx="50" cy="50" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 1.5" vector-effect="non-scaling-stroke"/>
+    <rect x="${(50-fw/2).toFixed(2)}" y="${(50-fh/2).toFixed(2)}" width="${fw.toFixed(2)}" height="${fh.toFixed(2)}" fill="none" stroke="#7fd3ff" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
+    <figcaption>Ваш кадр (голубая рамка) ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}° и размер объекта по каталогу (пунктир, без наклона) ${fmtR(o.a)}′×${fmtR(o.b)}′ на снимке DSS, поле ${fmtR(S)}°: ${tip}. Камеру можно повернуть — рамка показана длинной стороной по горизонтали.</figcaption></figure>`}
 const refFov=o=>+clamp(o.a*1.6/60,.15,3).toFixed(2);
 const refUrl=o=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${refFov(o)}&Pixels=500&Return=JPEG`;
 // На «Фото» — цветной снимок Stellarium (как объект выглядит на готовой астрофотографии), на «Визуале» и там, где цветного нет, —
@@ -1261,7 +1284,7 @@ function render(){
     return `<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
       <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
       <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
-      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?` · ${r.fill>1?'не влезает: ':''}${Math.round(r.fill*100)}% кадра`:''}</span>
+      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
       ${o.star?(([a,b])=>`<span class="facts">${a}</span>
       <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)} · ${b}</span>`)(starInfo(o,n,hm,bortle,aperture))
       :`<span class="facts">${physLine(o)}</span>
@@ -1275,7 +1298,7 @@ function render(){
       </svg>
       <div class="ticks">${ticksHtml}</div>
       <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°.${o.alias?` Другие обозначения: ${esc(o.alias.replace(/,/g,', '))}.`:''}</p>
-      ${refImg(o,kind)}
+      ${refImg(o,kind)}${kind=='photo'&&fov?frameHtml(o,fov,r.fill):''}
     </div><div class="log" data-kind="${kind}">
       <span class="lbl">В план:</span>${kindLists.map(l=>`<button type="button" data-act="list" data-list="${l.id}" aria-pressed="${l.ids.includes(o.id)}">${esc(l.name)}</button>`).join('')}
       <button type="button" data-act="done" aria-pressed="${!!e.done}">${kind=='photo'?'Снято':'Просмотрено'}</button>
