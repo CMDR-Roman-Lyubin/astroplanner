@@ -271,9 +271,10 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
   <div id="map" hidden></div>
   <p class="sub" id="sync">План, журнал и снимки хранятся на этом устройстве.</p>
   <p class="sub">Оценка 0–100 — эвристика: часы над горизонтом в тёмное время, высота, Луна, размер (фото) или поверхностная яркость против засветки (визуал). Координаты каталога округлены до ~0,5°.</p>
-  <p class="sub" id="ver" hidden></p><!-- номер версии вписывает build-pwa.js; на claude.ai строки нет -->
+  <p class="sub" id="ver" hidden></p><!-- номер версии — из version.js, его пишет build-pwa.js -->
 </main>
 
+<script src="version.js"></script>
 <script src="catalog-extra.js"></script><!-- дополнительные каталоги; без файла работает основной список -->
 <script>
 // ---------- Каталог: id;название;тип;созвездие;RA ч;Dec °;блеск;размер a';b' ----------
@@ -680,6 +681,7 @@ const VIS_LARGE={OC:.7,EN:.9,GC:1,G:1,SNR:.9,RN:.8,PN:1,DN:.4,GG:.8};
 
 // ---------- Интерфейс ----------
 const $=id=>document.getElementById(id);
+if(window.APP_VERSION){$('ver').textContent=APP_VERSION; $('ver').hidden=false}
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let saved={}; try{saved=JSON.parse(localStorage.getItem('sky')||'{}')}catch{}
 // mode — всё приложение работает либо для съёмки, либо для визуала; tab — раздел внутри режима
