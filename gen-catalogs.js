@@ -9,6 +9,9 @@ const SRC = {
   'names.dat': 'nebulae/default/names.dat',
   'ru.po': 'po/stellarium-sky/ru.po',
 };
+// Звёзды и линии созвездий для карты неба — из d3-celestial (BSD-3), координаты в градусах
+const CEL = 'https://cdn.jsdelivr.net/npm/d3-celestial@0.7.35/data/';
+const CEL_FILES = ['stars.6.json', 'constellations.lines.json', 'constellations.json'];
 const MIN_DEC = -30;
 
 // Порядок — как в Stellarium; [ключ, подпись, префикс в names.dat, формат обозначения]
@@ -65,7 +68,7 @@ async function src(name) {
   const f = path.join(cache, name);
   if (!fs.existsSync(f)) {
     fs.mkdirSync(cache, { recursive: true });
-    const r = await fetch('https://raw.githubusercontent.com/Stellarium/stellarium/master/' + SRC[name]);
+    const r = await fetch(CEL_FILES.includes(name) ? CEL + name : 'https://raw.githubusercontent.com/Stellarium/stellarium/master/' + SRC[name]);
     if (!r.ok) throw new Error(name + ': HTTP ' + r.status);
     fs.writeFileSync(f, Buffer.from(await r.arrayBuffer()));
   }
@@ -135,11 +138,22 @@ async function src(name) {
     extra.set(id, [id, (nm ? nm.n : '').replace(/[;`\\$]/g, ' '), type, (+r[1] / 15).toFixed(4), dec.toFixed(3), (est ? '~' : '') + +mag.toFixed(1),
       +a.toFixed(2), +b.toFixed(2), mask.toString(36), order.slice(1).map(x => x[1]).join(',')].join(';'));
   }
+  // Карта неба: звёзды до 5ᵐ «RA,Dec,блеск» через «;», линии созвездий — ломаные «RA,Dec,RA,Dec…» через «;», подписи — «имя,RA,Dec»
+  const ra = x => +((x + 360) % 360).toFixed(1), d1 = x => +x.toFixed(1);
+  const stars = JSON.parse(await src('stars.6.json')).features.filter(f => f.properties.mag <= 5)
+    .map(f => [ra(f.geometry.coordinates[0]), d1(f.geometry.coordinates[1]), d1(f.properties.mag)].join(',')).join(';');
+  const lines = JSON.parse(await src('constellations.lines.json')).features.flatMap(f => f.geometry.coordinates)
+    .map(l => l.flatMap(([x, y]) => [ra(x), d1(y)]).join(',')).join(';');
+  const cnames = JSON.parse(await src('constellations.json')).features
+    .map(f => [f.properties.ru, ra(f.geometry.coordinates[0]), d1(f.geometry.coordinates[1])].join(',')).join(';');
   const out = `// Сгенерировано gen-catalogs.js из каталога Stellarium (GPL) — руками не править.
 // CAT_BASE: id основного списка → «маска каталогов;другие обозначения»; CAT_EXTRA: id;имя;тип;RA ч;Dec;блеск (~ — оценка);a′;b′;маска;другие обозначения
 // Объекты северного неба (склонение от ${MIN_DEC}°) в пределах досягаемости 12″ телескопа.
 const CAT_LIST=${JSON.stringify(CATS.map(c => [c[0], c[1]]))};
 const CAT_BASE=${JSON.stringify(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, v.m.toString(36) + ';' + [...v.ids].join(',')])))};
+const SKY_STARS='${stars}';
+const SKY_LINES='${lines}';
+const SKY_NAMES='${cnames}';
 const CAT_EXTRA=\`
 ${[...extra.values()].join('\n')}
 \`;

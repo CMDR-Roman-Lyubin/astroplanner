@@ -26,7 +26,7 @@ ${fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8')}
 fs.copyFileSync(path.join(__dirname, 'catalog-extra.js'), path.join(out, 'catalog-extra.js'));
 
 write('manifest.webmanifest', JSON.stringify({
-  name: 'Небо на ночь', short_name: 'Небо', lang: 'ru', start_url: './', scope: './', display: 'standalone',
+  name: 'Темная ночь', short_name: 'Темная ночь', lang: 'ru', start_url: './', scope: './', display: 'standalone',
   background_color: BG, theme_color: BG,
   icons: [192, 512].map(s => ({ src: `icon-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable' })),
 }, null, 1));
