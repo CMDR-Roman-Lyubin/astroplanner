@@ -261,6 +261,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="250|7x7">Vaonis Vespera Pro</option>
       <option value="335|7.4x5">Celestron Origin</option>
     </select></label>
+    <label>Телескоп (труба)<select id="otaPh"></select></label>
     <label>Фокусное для съёмки, мм<input id="focal" type="number" min="1" step="1" placeholder="не задано"></label>
     <label>Сенсор<select id="sensor">
       <option value="">не задан</option>
@@ -278,6 +279,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     </select></label>
     </div></details>
     <details class="sgrp"><summary>Визуал</summary><div class="sgrid">
+    <label>Телескоп<select id="ota"></select></label>
     <label>Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
     <label>Фокусное телескопа, мм<input id="tfocal" type="number" min="100" step="10" placeholder="например, 1500"></label>
     <fieldset class="catsel" id="epsel"><legend>Мои окуляры — круги поля на карте неба</legend>
@@ -902,7 +904,8 @@ const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
     p.rating&&'оценка фото '+fmtR(p.rating),v.rating&&'оценка визуала '+fmtR(v.rating)].filter(Boolean).join(' · ')};
 const rec=(id,kind)=>(log[id]||(log[id]={}))[kind]||(log[id][kind]={});
 // оборудование, выбранное сейчас в форме: модель смарт-телескопа или «фокусное + сенсор»
-const curGear=()=>setups.find(x=>x.focal&&x.focal==$('focal').value&&x.sensor==$('sensor').value)?.name||($('scope').selectedIndex>0?$('scope').options[$('scope').selectedIndex].textContent
+const curGear=()=>setups.find(x=>x.focal&&x.focal==$('focal').value&&x.sensor==$('sensor').value)?.name
+  ||(typeof otaPhV=='string'&&otaOf(otaPhV)&&$('sensor').value?`${otaOf(otaPhV)[0]}, сенсор ${$('sensor').value.replace('x','×')} мм`:'')||($('scope').selectedIndex>0?$('scope').options[$('scope').selectedIndex].textContent
   :$('focal').value&&$('sensor').value?`${$('focal').value} мм, сенсор ${$('sensor').value.replace('x','×')} мм`:'');
 // ---------- Снимки: в артефакте — хранилище артефакта, вне его (установленное приложение, файл) — IndexedDB этого устройства ----------
 const idb=(mode,fn)=>new Promise((res,rej)=>{const open=indexedDB.open('sky',1);
@@ -1621,7 +1624,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,ota:otaV,otaPh:otaPhV,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1632,7 +1635,7 @@ function render(){
   $('catLegend').textContent=`Каталоги в рекомендациях — ${mode=='photo'?'для съёмки':'для визуала'}`;
   for(const b of $('catList').querySelectorAll('input')) b.checked=catSets[mode].has(b.value);
   const lo=+$('magMin').value, hi=+$('magMax').value;
-  $('progBox').hidden=tab!='rec'; drawSetups(); drawHz();
+  $('progBox').hidden=tab!='rec'; syncOta(); drawSetups(); drawHz();
   $('magBox').hidden=mode!='visual'||tab!='rec'; $('magTxt').textContent=magTxt(lo,hi);
   $('filtBox').hidden=tab!='rec';
   $('filtSum').textContent='Фильтры: '+[types.size?[...types].filter(t=>mode=='visual'||!STAR_TYPES.has(t)).map(t=>TYPE_PL[t].toLowerCase()).join(', ')||'все типы':'все типы',
@@ -1754,6 +1757,31 @@ $('date').onchange=$('bortle').onchange=$('oiii').onchange=$('doneF').onchange=$
 const syncScope=()=>{$('scope').value=`${$('focal').value}|${$('sensor').value}`; if($('scope').selectedIndex<0)$('scope').value=''};
 $('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal').value=f;$('sensor').value=s} render()};
 $('sensor').onchange=$('focal').oninput=()=>{syncScope();render()};
+// Популярные трубы: [название, апертура мм, фокусное мм]. Визуал — заполняет апертуру и фокусное телескопа, астрофото — фокусное для съёмки
+// (сенсор — отдельно; с редуктором или корректором фокусное другое — поправьте вручную)
+const OTAS=[['Рефракторы',[['William Optics RedCat 51',51,250],['William Optics RedCat 61',61,300],['William Optics Zenithstar 61',61,360],['William Optics Zenithstar 73',73,430],
+    ['William Optics GT81',81,478],['Askar FRA400',72,400],['Askar FRA500',90,500],['Askar FRA600',108,600],['Sharpstar 61EDPH',61,335],
+    ['Sky-Watcher Evostar 72ED',72,420],['Sky-Watcher Evostar 80ED',80,600],['Sky-Watcher Evostar 100ED',100,900],
+    ['Sky-Watcher Esprit 80ED',80,400],['Sky-Watcher Esprit 100ED',100,550],['Sky-Watcher Esprit 120ED',120,840],['Sky-Watcher Esprit 150ED',150,1050]]],
+  ['Ньютоны',[['Sky-Watcher 130/650 (130PDS)',130,650],['Sky-Watcher 150/750 (150PDS)',150,750],['Sky-Watcher Quattro 200 f/4',200,800],
+    ['Sky-Watcher 200/1000 (200PDS)',200,1000],['Sky-Watcher Quattro 250 f/4',254,1000],['Sky-Watcher 254/1200',254,1200]]],
+  ['Добсоны',[['Добсон 6″ 153/1200',153,1200],['Добсон 8″ 203/1200',203,1200],['Добсон 10″ 254/1200',254,1200],['Добсон 12″ 305/1500',305,1500],
+    ['Добсон 14″ 355/1650',355,1650],['Добсон 16″ 406/1800',406,1800]]],
+  ['Шмидт-Кассегрены',[['Celestron C5',127,1250],['Celestron C6',150,1500],['Celestron C8',203,2032],['Celestron C8 + редуктор 0,63',203,1280],
+    ['Celestron C9.25',235,2350],['Celestron C11',280,2800],['Celestron EdgeHD 8 + редуктор 0,7',203,1422],['Celestron EdgeHD 11 + редуктор 0,7',280,1960]]],
+  ['Максутовы',[['Sky-Watcher Skymax 90',90,1250],['Sky-Watcher Skymax 102',102,1300],['Sky-Watcher Skymax 127',127,1500],
+    ['Sky-Watcher Skymax 150',150,1800],['Sky-Watcher Skymax 180',180,2700]]],
+  ['Астрографы RASA',[['Celestron RASA 8',203,400],['Celestron RASA 11',279,620]]]];
+$('ota').innerHTML=$('otaPh').innerHTML='<option value="">своя / не выбрана</option>'+OTAS.map(([g,l])=>`<optgroup label="${g}">${l.map(([n,d,f],i)=>
+  `<option value="${g}|${i}">${n} — ${d}/${f}</option>`).join('')}</optgroup>`).join('');
+const otaOf=v=>{const [g,i]=(v||'').split('|'); return OTAS.find(x=>x[0]==g)?.[1][+i]};
+// выбор держится, пока числа совпадают с трубой; правка руками или смарт-телескоп сбрасывают его
+let otaV=saved.ota||'', otaPhV=saved.otaPh||'';
+function syncOta(){const v=otaOf(otaV), p=otaOf(otaPhV);
+  if(!v||v[1]!=$('aperture').value||v[2]!=$('tfocal').value) otaV=''; if(!p||p[2]!=$('focal').value||$('scope').value) otaPhV='';
+  $('ota').value=otaV; $('otaPh').value=otaPhV}
+$('ota').onchange=()=>{otaV=$('ota').value; const v=otaOf(otaV); if(v){$('aperture').value=v[1]; $('tfocal').value=v[2]} render()};
+$('otaPh').onchange=()=>{otaPhV=$('otaPh').value; const p=otaOf(otaPhV); if(p){$('focal').value=p[2]; syncScope()} render()};
 syncScope();
 $('f').onsubmit=e=>e.preventDefault();
 const showSetup=open=>{$('setup').hidden=!open; $('gear').setAttribute('aria-pressed',open); if(open) $('setup').scrollIntoView({block:'start',behavior:'smooth'})};
