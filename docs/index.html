@@ -279,7 +279,8 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
 </main>
 
 <script src="version.js"></script>
-<script src="catalog-extra.js"></script><!-- дополнительные каталоги; без файла работает основной список -->
+<script src="catalog-extra.js"></script>
+<script src="stars-vis.js"></script><!-- двойные, переменные и углеродные звёзды для визуала --><!-- дополнительные каталоги; без файла работает основной список -->
 <script>
 // ---------- Каталог: id;название;тип;созвездие;RA ч;Dec °;блеск;размер a';b' ----------
 // Координаты J2000, записаны по памяти с точностью ~0,5° — для планирования хватает, для наведения нет.
@@ -510,14 +511,30 @@ const HAS_EXTRA=typeof CAT_LIST!='undefined';
 for(const o of CATALOG){const [m,alias]=(HAS_EXTRA&&CAT_BASE[o.id]||'0;').split(';'); Object.assign(o,{base:true,cats:parseInt(m,36),alias})}
 if(HAS_EXTRA) for(const l of CAT_EXTRA.trim().split('\n')){const [id,name,type,ra,dec,mag,a,b,m,alias]=l.split(';');
   CATALOG.push({id,name,type,con:'',ra:ra*15,dec:+dec,mag:+mag.replace('~',''),est:mag[0]=='~',a:+a,b:+b,cats:parseInt(m,36),alias})}
+// ---------- Звёзды для визуала (stars-vis.js): двойные (WDS), переменные (GCVS), углеродные (CGCS) ----------
+// Это точки, а не туманности: у них своя оценка (starScore) и своя строка в карточке (starInfo); в режиме «Астрофото» их нет
+const HAS_STARS=typeof VAR_STARS=='string';
+if(HAS_STARS){
+  for(const l of DOUBLE_STARS.split('\n')){const [id,desig,ru,ra,dec,m1,m2,sp,pa,spt,en]=l.split(';');
+    CATALOG.push({id,name:ru||desig,type:'DBL',con:'',ra:+ra,dec:+dec,mag:+m1,a:.1,b:.1,cats:0,alias:desig&&ru?desig:'',en,star:true,
+      d:{m1:+m1,m2:+m2,sep:+sp,pa:pa===''?null:+pa,sp:spt,desig}})}
+  for(const l of VAR_STARS.split('\n')){const [id,ru,ra,dec,type,max,min,period,epoch,dur,sp,carbon,en]=l.split(';');
+    CATALOG.push({id,name:ru,type:'VAR',con:'',ra:+ra,dec:+dec,mag:+max,a:.1,b:.1,cats:0,alias:'',en,star:true,carbon:carbon=='1',
+      v:{type,max:+max,min:+min,period:+period,epoch:+epoch,dur:+dur,sp}})}
+  for(const l of CARBON_STARS.split('\n')){const [id,ru,ra,dec,v,sp,en]=l.split(';');
+    CATALOG.push({id,name:ru,type:'CS',con:'',ra:+ra,dec:+dec,mag:+v,a:.1,b:.1,cats:0,alias:'',en,star:true,carbon:true,v:{sp}})}
+}
 const norm=s=>s.toLowerCase().replace(/\s+/g,'');
-for(const o of CATALOG){o.keys=[o.id,...o.alias.split(',').filter(Boolean)].map(norm); o.key=o.keys.join('|')+'|'+norm(o.name)}
+for(const o of CATALOG){o.keys=[o.id,...o.alias.split(',').filter(Boolean)].map(norm); o.key=o.keys.join('|')+'|'+norm(o.name)
+  +'|'+norm((typeof CAT_EN=='object'&&CAT_EN[o.id])||o.en||''); // английские названия — только для поиска
+  o.names=[o.name,...((typeof CAT_EN=='object'&&CAT_EN[o.id])||o.en||'').split('|')].filter(Boolean).map(norm)}
 
 const BYID=Object.fromEntries(CATALOG.map(o=>[o.id,o]));const TYPES={G:'галактика',EN:'эмиссионная туманность',RN:'отражательная туманность',SNR:'остаток сверхновой',
-  PN:'планетарная туманность',OC:'рассеянное скопление',GC:'шаровое скопление',DN:'тёмная туманность',GG:'группа галактик'};
+  PN:'планетарная туманность',OC:'рассеянное скопление',GC:'шаровое скопление',DN:'тёмная туманность',GG:'группа галактик',
+  DBL:'двойная звезда',VAR:'переменная звезда',CS:'углеродная звезда'};
 // Насколько Луна портит съёмку: эмиссионные объекты спасает узкополосный фильтр, галактики и пыль — нет.
-const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5,DN:1,GG:1};
-const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45,DN:.8,GG:.8};
+const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5,DN:1,GG:1,DBL:.1,VAR:.1,CS:.1};
+const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45,DN:.8,GG:.8,DBL:.1,VAR:.1,CS:.1};
 const SKY=[0,22,21.9,21.6,21,20.2,19.3,18.6,18,17.5]; // яркость неба по Бортлю, mag/arcsec²
 const PHOTO_ALT=25, VISUAL_ALT=20; // 25°, а не 30°: иначе с широты Москвы выпадает M42
 
@@ -663,7 +680,46 @@ function needAperture(o,n,s,bortle,oiii){
   const ext=.3*(1/Math.max(sin(s.max),.17)-1), m0=visMargin(o,n,s,bortle,oiii)-ext, lm=NELM[bortle]-1.5*n.illum*s.moonFrac;
   const d=(sbNeed,totNeed)=>Math.max(100*10**((sbNeed-m0)/3),7*10**((o.mag+ext-lm+.5+totNeed)/5));
   return [d(1,0),d(3,1)]}
-function visualScore(o,n,bortle,aperture,oiii){const s=stats(o,n,VISUAL_ALT);
+// ---------- Звёзды: блеск сейчас, минимумы затменных, оценка ----------
+const jdOf=t=>t/864e5+2440587.5;
+// прогноз блеска переменной на момент t: для мирид и цефеид — по эпохе максимума и периоду (кривая условно синусоидальная),
+// для полуправильных и неправильных — только диапазон. Это оценка: мириды сдвигаются от эфемериды на недели
+function varNow(o,t){const v=o.v; if(!v||!v.period||!v.epoch||!/^(M|DCEP|CEP|DCEPS|CW)/.test(v.type)) return null;
+  const ph=(((jdOf(t)-v.epoch)/v.period)%1+1)%1; return {mag:v.max+(v.min-v.max)*(1-Math.cos(2*Math.PI*ph))/2,ph}}
+// минимумы затменной (эпоха GCVS у них — момент главного минимума) в тёмное время ночи n
+function eclipses(o,n){const v=o.v; if(!v||!/^E[ABW]/.test(v.type)||!v.period||!v.epoch||!n.dark.length) return [];
+  const a=jdOf(n.dark[0].t), b=jdOf(n.dark.at(-1).t), out=[];
+  for(let k=Math.ceil((a-v.epoch)/v.period);v.epoch+k*v.period<=b;k++) out.push((v.epoch+k*v.period-2440587.5)*864e5);
+  return out}
+const telLim=(bortle,aperture)=>NELM[bortle]+5*Math.log10((aperture>0?aperture:150)/7)-.5; // предельная звёздная величина телескопа
+function starScore(o,n,bortle,aperture){const s=stats(o,n,VISUAL_ALT);
+  const base=100*Math.min(s.h,2)/2*(.6+.4*clamp((s.max-10)/40)), D=aperture>0?aperture:150, lim=telLim(bortle,D);
+  let f=.7;
+  if(o.type=='DBL'){const d=o.d, res=d.sep/(116/D);                      // во сколько раз шире предела Доуэса
+    f=.85*clamp((res-1)/1.5,0,1)*clamp((9-d.m1)/6,.35,1)*(1-.07*Math.max(0,d.m2-d.m1))*(o.name?1:.85)*(d.m2<=lim?1:.2)}
+  else if(o.type=='VAR'){const now=varNow(o,s.tMax||n.dark[0]?.t), ecl=eclipses(o,n).length, cur=now?now.mag:(o.v.max+o.v.min)/2;
+    // интереснее всего: минимум затменной этой ночью и мирида около максимума; остальные переменные — ниже, их место в своей категории
+    f=(ecl?1.05:now&&/^M/.test(o.v.type)&&cur-o.v.max<1.5?.9:.6)*(o.carbon?1.05:1)*(cur<=lim?1:.25)*clamp((10-o.v.max)/6,.5,1)}
+  else f=.8*(o.mag<=lim?1:.25)*clamp((10-o.mag)/4,.5,1);
+  // ×0,8: в общем списке туманности и галактики остаются впереди, звёзды — в своих категориях; минимум затменной этой ночью — исключение
+  return {...s,score:Math.min(100,base*f*(o.type=='VAR'&&eclipses(o,n).length?1:.8))}}
+// строки карточки звезды: [факты, совет для наблюдения]
+const VTYPE={M:'мирида (долгопериодическая)',SRA:'полуправильная',SRB:'полуправильная',SRC:'полуправильная сверхгигант',SRD:'полуправильная',SR:'полуправильная',
+  LB:'неправильная',LC:'неправильная сверхгигант',L:'неправильная',EA:'затменная типа Алголя',EB:'затменная типа β Лиры',EW:'затменная типа W UMa',
+  DCEP:'цефеида',DCEPS:'цефеида',CEP:'цефеида',CW:'цефеида II типа',RCB:'типа R Северной Короны (внезапно гаснет)',NR:'повторная новая',
+  UG:'карликовая новая',UGSS:'карликовая новая',UGZ:'карликовая новая',ZAND:'симбиотическая'};
+function starInfo(o,n,hm,bortle,aperture){const D=aperture>0?aperture:0;
+  if(o.type=='DBL'){const d=o.d, need=apRound(116/d.sep*1.3);
+    return [`${o.d.desig&&o.d.desig!=o.name?o.d.desig+' · ':''}${f1(d.m1)}ᵐ + ${f1(d.m2)}ᵐ · расстояние ${fmtR(d.sep)}″${d.pa!=null?` · угол ${d.pa}°`:''}${d.sp?' · спектр '+esc(d.sp):''}`,
+      need?`разделяется от ${need} мм${D?` (у вас ${D} мм — ${D>=need?'разделится':'не разделится'})`:''}`:'разделяется в любой телескоп, если пара шире 3″ — даже в бинокль']}
+  if(o.type=='CS') return [`блеск ${f1(o.mag)}ᵐ · спектр ${esc(o.v.sp)}`,'углеродная звезда — густо-красного цвета; цвет лучше виден при небольшом расфокусе'];
+  const v=o.v, now=varNow(o,n.dark.length?n.dark[n.dark.length>>1].t:Date.now()), ecl=eclipses(o,n);
+  const facts=`${VTYPE[v.type.split(/[/:+]/)[0]]||v.type} · блеск ${f1(v.max)}–${f1(v.min)}ᵐ${v.period?` · период ${v.period<10?fmtR(+v.period.toFixed(3)):Math.round(v.period)} сут`:''}${v.sp?' · спектр '+esc(v.sp):''}${o.carbon?' · углеродная':''}`;
+  const tip=ecl.length?`минимум этой ночью в ${ecl.map(hm).join(', ')} — блеск падает до ${f1(v.min)}ᵐ`
+    :now?`сейчас ≈ ${f1(now.mag)}ᵐ (прогноз по эфемериде, ${now.ph<.15||now.ph>.85?'около максимума':now.ph<.5?'гаснет':'разгорается'})`
+    :'блеск меняется без строгого периода — оцените его по звёздам сравнения';
+  return [facts,tip]}
+function visualScore(o,n,bortle,aperture,oiii){if(o.star) return starScore(o,n,bortle,aperture); const s=stats(o,n,VISUAL_ALT);
   const margin=visMargin(o,n,s,bortle,oiii);
   // Апертура D влияет четырьмя способами (все — эвристика, веса подобраны на глаз):
   const D=aperture>0?aperture:0;
@@ -693,7 +749,9 @@ let mode=saved.mode=='visual'?'visual':'photo', tab=['rec','plan','done','map'].
 const MODES=['photo','visual'], TABS=['rec','plan','done','map'];
 // Типы объектов — как в фильтре Stellarium; выбрано несколько или ни одного (= все)
 const TYPE_PL={DN:'Тёмные туманности',EN:'Эмиссионные туманности',G:'Галактики',GC:'Шаровые скопления',GG:'Группы галактик',
-  OC:'Рассеянные скопления',PN:'Планетарные туманности',RN:'Отражательные туманности',SNR:'Остатки сверхновых'};
+  OC:'Рассеянные скопления',PN:'Планетарные туманности',RN:'Отражательные туманности',SNR:'Остатки сверхновых',
+  DBL:'Двойные звёзды',VAR:'Переменные звёзды',CARB:'Углеродные звёзды'}; // звёздные категории — только в визуале; CARB — по признаку, а не по типу
+const STAR_TYPES=new Set(['DBL','VAR','CARB']);
 let shown=15; // сколько рекомендаций показано; кнопка «Ещё» добавляет по 15, смена режима, раздела или фильтров — сбрасывает
 let types=new Set((saved.types||[]).filter(t=>t in TYPE_PL));
 
@@ -769,16 +827,17 @@ let recState=null;
 const ASR_LIB='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const ASR_MODELS={fast:'onnx-community/whisper-base',best:'onnx-community/whisper-small'};
 let asrWorker=null, asrSeq=0; const asrJobs={};
-function asrRun(audio,model,onProgress){
+function asrRun(audio,model,onProgress,lang='russian'){
   if(!asrWorker){
     const code=`import {pipeline} from '${ASR_LIB}';
 let pipe=null, cur='';
-self.onmessage=async e=>{const {id,audio,model}=e.data;
+self.onmessage=async e=>{const {id,audio,model,lang}=e.data;
   try{
     if(!pipe||cur!=model){pipe=null; pipe=await pipeline('automatic-speech-recognition',model,{dtype:'q8',device:'wasm',
       progress_callback:p=>{if(p.status=='progress'&&p.total) self.postMessage({id,file:p.file,loaded:p.loaded,total:p.total})}}); cur=model}
     self.postMessage({id,stage:'run'});
-    const out=await pipe(audio,{language:'russian',task:'transcribe',chunk_length_s:30,stride_length_s:5});
+    const opts={task:'transcribe',chunk_length_s:30,stride_length_s:5}; if(lang) opts.language=lang; // без языка модель определяет его сама
+    const out=await pipe(audio,opts);
     self.postMessage({id,text:(out.text||'').trim()})
   }catch(err){self.postMessage({id,error:String(err&&err.message||err)})}};`;
     asrWorker=new Worker(URL.createObjectURL(new Blob([code],{type:'text/javascript'})),{type:'module'});
@@ -787,7 +846,7 @@ self.onmessage=async e=>{const {id,audio,model}=e.data;
     // библиотека не загрузилась (нет сети при первом запуске) — завершаем ожидающие задачи, следующий раз поток создастся заново
     asrWorker.onerror=e=>{e.preventDefault(); for(const [id,j] of Object.entries(asrJobs)){delete asrJobs[id]; j.rej(new Error('не загрузилась библиотека распознавания'))} asrWorker.terminate(); asrWorker=null};
   }
-  return new Promise((res,rej)=>{const id=++asrSeq; asrJobs[id]={res,rej,progress:onProgress}; asrWorker.postMessage({id,audio,model},[audio.buffer])});
+  return new Promise((res,rej)=>{const id=++asrSeq; asrJobs[id]={res,rej,progress:onProgress}; asrWorker.postMessage({id,audio,model,lang},[audio.buffer])});
 }
 // запись (webm/opus) → моно 16 кГц, как ждёт Whisper
 async function to16k(blob){
@@ -958,7 +1017,7 @@ const PRESETS={std:['base'],
 // для фото и визуала — свои наборы; старое сохранение (один список на обе вкладки) переносим в оба
 const sc=saved.cats, catSets={photo:new Set(sc?.photo||(Array.isArray(sc)?sc:PRESETS.std)),visual:new Set(sc?.visual||(Array.isArray(sc)?sc:PRESETS.std))};
 const catMask=kind=>HAS_EXTRA?CAT_LIST.reduce((m,c,i)=>catSets[kind].has(c[0])?m|1<<i:m,0):0;
-const inCats=(o,mask,kind)=>o.base&&catSets[kind].has('base')||(o.cats&mask);
+const inCats=(o,mask,kind)=>o.star?kind=='visual':o.base&&catSets[kind].has('base')||(o.cats&mask);
 if(HAS_EXTRA){$('catsel').hidden=false;
   const count=i=>CATALOG.filter(o=>o.cats>>i&1).length;
   $('catList').innerHTML=[['base','Основной список','217 объектов, которые выбирали вручную',CATALOG.filter(o=>o.base).length],
@@ -1147,7 +1206,8 @@ function render(){
   for(const b of $('catList').querySelectorAll('input')) b.checked=catSets[mode].has(b.value);
   const lo=+$('magMin').value, hi=+$('magMax').value;
   $('magBox').hidden=mode!='visual'||tab!='rec'; $('magTxt').textContent=magTxt(lo,hi);
-  $('cats').hidden=tab!='rec'; $('qrow').hidden=tab=='map'; if(tab=='map') $('qst').hidden=true; $('listBar').hidden=tab!='plan'&&tab!='map';
+  $('cats').hidden=tab!='rec'; for(const b of $('cats').children) b.hidden=mode=='photo'&&STAR_TYPES.has(b.dataset.type);
+  if(mode=='photo') for(const t of STAR_TYPES) types.delete(t); $('qrow').hidden=tab=='map'; if(tab=='map') $('qst').hidden=true; $('listBar').hidden=tab!='plan'&&tab!='map';
   $('list').hidden=tab=='map'; $('map').hidden=tab!='map';
   const L=listOf(mode);
   $('lists').innerHTML=lists.filter(l=>l.kind==mode).map(l=>`<button type="button" data-list="${l.id}" aria-pressed="${l==L}">${esc(l.name)} <small>${l.ids.length}</small></button>`).join('');
@@ -1181,13 +1241,15 @@ function render(){
   const kind=mode, mine={plan:'plan',done:'done'}[tab];
   const minAlt=kind=='photo'?PHOTO_ALT:VISUAL_ALT, oiii=$('oiii').checked;
   // поиск идёт по всему каталогу: без типов, каталогов и порога оценки, точное совпадение номера — первым
-  const q=norm($('q').value), exact=o=>o.keys.includes(q), mask=catMask(kind), inPlan=new Set(L.ids);
+  // точность совпадения при поиске: 3 — номер, 2 — название целиком (русское или английское), 1 — название начинается с запроса
+  const q=norm($('q').value), mask=catMask(kind), inPlan=new Set(L.ids);
+  const exact=o=>!q?0:o.keys.includes(q)?3:o.names.includes(q)?2:o.names.some(x=>x.startsWith(q))?1:0;
   // план и журнал показывают всё отмеченное, даже невидимое этой ночью, по порядку времени наилучшей высоты
   const order=r=>r.h?r.tMax:9e15;
   // «Скрывать снятое и просмотренное» убирает отмеченное только из рекомендаций
   const hide=!mine&&!q&&$('hideDone').checked;
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?!!log[o.id]?.[kind]?.done
-    :!(hide&&log[o.id]?.[kind]?.done)&&(q||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)));
+    :!(hide&&log[o.id]?.[kind]?.done)&&(q||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   const all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
     .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)); // все подходящие по убыванию оценки
   const rows=all.slice(0,q?30:mine?999:shown);
@@ -1200,12 +1262,14 @@ function render(){
     const riseSet=[cross(true),cross(false)].filter(Boolean).join(', ')||(alts[0]>0?'не заходит':'не восходит');
     const e=log[o.id]?.[kind]||{};
     // нашли поиском один объект или точный номер — карточка сразу раскрыта, чтобы снимок был виден без лишнего нажатия
-    return `<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o))?' open':''}><summary>
+    return `<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
       <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
       <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
       <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?` · ${r.fill>1?'не влезает: ':''}${Math.round(r.fill*100)}% кадра`:''}</span>
-      <span class="facts">${physLine(o)}</span>
-      <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)}${kind=='visual'?' · '+apertureLine(o,n,r,bortle,oiii,aperture):''}</span>
+      ${o.star?(([a,b])=>`<span class="facts">${a}</span>
+      <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)} · ${b}</span>`)(starInfo(o,n,hm,bortle,aperture))
+      :`<span class="facts">${physLine(o)}</span>
+      <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)}${kind=='visual'?' · '+apertureLine(o,n,r,bortle,oiii,aperture):''}</span>`}
     </summary><div class="chart">
       <svg viewBox="0 0 ${N} 90" preserveAspectRatio="none" role="img" aria-label="Высота объекта за ночь">
         <rect x="${d0.i}" y="0" width="${d1.i-d0.i}" height="90" fill="var(--night)"/>
@@ -1347,19 +1411,19 @@ function voiceQuery(t){
   let s=' '+t.toLowerCase().replace(/[.,!?;:«»"()]/g,' ').replace(/ё/g,'е')+' ';
   const R_=String.raw, sp=R_`(?:\s|-)*`, num=R_`(\d+)`;
   for(const [re,out] of [
-    [R_`(месс?ье|месс?и\S*|мисс?и\S*|messier|эм|м|m)${sp}${num}`,'M'], // «Мессье» модель слышит и как «Миссия», «Месси»
-    [R_`(эн${sp}джи${sp}си|энджиси|нгц|ngc|н${sp}г${sp}с|эн${sp}джи${sp}эс)${sp}${num}`,'NGC '],
-    [R_`(ай${sp}си|айси|ic|ис)${sp}${num}`,'IC '],
-    [R_`(колдуэлл\S*|колдвелл\S*|caldwell)${sp}${num}`,'C '],
-    [R_`(шарплес\S*|sh)${sp}2?${sp}${num}`,'Sh2-'],
+    [R_`(месс?ье|месс?и\S*|мисс?и\S*|messier|mess\S*|эм|м|m)${sp}${num}`,'M'], // «Мессье» модель слышит и как «Миссия», «Месси», «Messy»
+    [R_`(эн${sp}джи${sp}си|энджиси|нгц|ngc|н${sp}г${sp}с|эн${sp}джи${sp}эс|n${sp}g${sp}c|en${sp}g${sp}c|and${sp}g${sp}c|gc)${sp}${num}`,'NGC '], // «and GC 7000» — так модель слышит «N G C»
+    [R_`(ай${sp}си|айси|ic|ис|i${sp}c|eye${sp}see)${sp}${num}`,'IC '],
+    [R_`(колдуэлл\S*|колдвелл\S*|caldwell|coldwell)${sp}${num}`,'C '],
+    [R_`(шарплес\S*|sharpless|sh)${sp}2?${sp}${num}`,'Sh2-'],
     [R_`(барнард\S*|barnard)${sp}${num}`,'B '],
     [R_`(арп|arp)${sp}${num}`,'Arp '],
-    [R_`(мелотт\S*)${sp}${num}`,'Mel '],
-    [R_`(коллиндер\S*)${sp}${num}`,'Cr ']]){
+    [R_`(мелотт\S*|melotte)${sp}${num}`,'Mel '],
+    [R_`(коллиндер\S*|collinder)${sp}${num}`,'Cr ']]){
     const m=s.match(new RegExp(R_`(?:^|\s)`+re+R_`(?=\s)`));
     if(m) return out+m[m.length-1]}
   // название: ищем по основе слов («андромеда» → «андромед»), берём слово, которое находит меньше всего объектов, но не ноль
-  const words=s.split(/\s+/).filter(w=>w.length>2&&!/^(туманност|галактик|скоплени|звезд|найди|покажи|объект)/.test(w));
+  const words=s.split(/\s+/).filter(w=>w.length>2&&!/^(туманност|галактик|скоплени|звезд|найди|покажи|объект|show|find|the|nebula|galaxy|cluster|star|please)/.test(w));
   let best=null,bn=1e9;
   for(const w of words){const st=norm(w.length>5?w.slice(0,-2):w), k=CATALOG.filter(o=>o.key.includes(st)).length; if(k&&k<bn){bn=k;best=st}}
   return best||t.trim();
@@ -1376,12 +1440,17 @@ async function voiceSearch(){
   mr.onstop=async()=>{clearTimeout(auto); stream.getTracks().forEach(t=>t.stop()); qRec=null; btn.setAttribute('aria-pressed',false);
     const key=$('asr').value in ASR_MODELS?$('asr').value:'fast', files={};
     try{st.textContent='Распознаю…';
-      const text=await asrRun(await to16k(new Blob(chunks,{type:mr.mimeType||'audio/webm'})),ASR_MODELS[key],d=>{
-        if(d.stage=='run'){st.textContent='Распознаю…';return}
+      const audio=await to16k(new Blob(chunks,{type:mr.mimeType||'audio/webm'}));
+      const prog=d=>{if(d.stage=='run'){st.textContent='Распознаю…';return}
         files[d.file]=d; const v=Object.values(files), p=v.reduce((a,x)=>a+x.loaded,0)/v.reduce((a,x)=>a+x.total,0);
-        st.textContent=`Скачиваю модель распознавания: ${Math.round(p*100)}% — только в первый раз.`});
+        st.textContent=`Скачиваю модель распознавания: ${Math.round(p*100)}% — только в первый раз.`};
+      // сначала по-русски; если по услышанному ничего не находится — ещё раз по-английски (названия часто английские).
+      // Автоопределение языка на коротких фразах ошибается: «Туманность Андромеды» превращается в «Tumanity and Rameda»
+      const found=q=>q&&CATALOG.some(o=>o.key.includes(norm(q)));
+      let text=await asrRun(audio.slice(),ASR_MODELS[key],prog,'russian'), q=text&&voiceQuery(text);
+      if(!found(q)){const en=await asrRun(audio,ASR_MODELS[key],prog,'english'), qe=en&&voiceQuery(en); if(found(qe)||!text){text=en; q=qe}}
       if(!text){st.textContent='Не расслышал — попробуйте ещё раз.';return}
-      const q=voiceQuery(text); $('q').value=q; tab=tab=='map'?'rec':tab; render();
+      $('q').value=q; tab=tab=='map'?'rec':tab; render();
       st.textContent=`Услышал: «${text}» → ищу «${q}».`;
     }catch(e){st.textContent=navigator.onLine?'Не удалось распознать: '+e.message:'Модель распознавания ещё не скачана. Подключитесь к интернету один раз.'}};
   mr.start(); btn.setAttribute('aria-pressed',true); st.textContent='Говорите… нажмите 🎤 ещё раз, когда закончите.';

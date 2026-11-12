@@ -80,14 +80,17 @@ async function src(name) {
   const ru = {};
   for (const m of (await src('ru.po')).matchAll(/^msgid "(.+)"\r?\nmsgstr "(.+)"\r?$/gm)) ru[m[1]] = m[2];
   // имена объектов: «ПРЕФИКС номер» → имя; известные (WK) — вперёд
-  const names = {};
+  const names = {}, enNames = {};
   for (const l of (await src('names.dat')).split('\n')) {
     if (!l.trim() || l[0] == '#') continue;
     const key = l.slice(0, 5).trim() + ' ' + l.slice(5, 20).trim(), m = l.slice(20).match(/_\("(.+?)"\)(.*)/);
     if (!m) continue;
     const n = ru[m[1]] || m[1], wk = /\bWK\b/.test(m[2]);
     if (!names[key] || wk && !names[key].wk) names[key] = { n, wk };
+    (enNames[key] || (enNames[key] = new Set())).add(m[1]); // все английские имена — для поиска («Pelican Nebula», «Ring Nebula»)
   }
+  const en = {}; // id объекта → английские имена через «|»
+  const addEn = (id, keys) => { const s = new Set(en[id] ? en[id].split('|') : []); for (const k of keys) for (const x of enNames[k] || []) s.add(x); if (s.size) en[id] = [...s].join('|') };
   const html = fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8');
   const baseIds = html.match(/const CATALOG = `([^`]*)`/)[1].trim().split('\n').map(l => l.split(';')[0]);
   const baseOf = {}; // обозначение → id объекта основного списка
@@ -107,7 +110,7 @@ async function src(name) {
     if (!ids.length) continue;
     // объект из основного списка — только запоминаем, в каких он каталогах
     const hit = ids.map(x => baseOf[x[1]]).find(Boolean);
-    if (hit) { const e = base[hit] || (base[hit] = { m: 0, ids: new Set() }); e.m |= mask; ids.forEach(x => x[1] != hit && e.ids.add(x[1])); continue }
+    if (hit) { const e = base[hit] || (base[hit] = { m: 0, ids: new Set() }); e.m |= mask; ids.forEach(x => x[1] != hit && e.ids.add(x[1])); addEn(hit, keys); continue }
     const dec = +r[2], type = TYPE[r[5]];
     if (!(dec >= MIN_DEC) || !type) continue;
 
@@ -135,6 +138,7 @@ async function src(name) {
     if (extra.has(id)) continue;
     const nm = keys.map(k => names[k]).find(Boolean);
     CATS.forEach((c, i) => { if (mask & 1 << i) stat[c[0]]++ });
+    addEn(id, keys);
     extra.set(id, [id, (nm ? nm.n : '').replace(/[;`\\$]/g, ' '), type, (+r[1] / 15).toFixed(4), dec.toFixed(3), (est ? '~' : '') + +mag.toFixed(1),
       +a.toFixed(2), +b.toFixed(2), mask.toString(36), order.slice(1).map(x => x[1]).join(',')].join(';'));
   }
@@ -151,6 +155,8 @@ async function src(name) {
 // Объекты северного неба (склонение от ${MIN_DEC}°) в пределах досягаемости 12″ телескопа.
 const CAT_LIST=${JSON.stringify(CATS.map(c => [c[0], c[1]]))};
 const CAT_BASE=${JSON.stringify(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, v.m.toString(36) + ';' + [...v.ids].join(',')])))};
+// CAT_EN: id → английские названия через «|» — только для поиска
+const CAT_EN=${JSON.stringify(Object.fromEntries(Object.entries(en).filter(([id]) => extra.has(id) || base[id])))};
 const SKY_STARS='${stars}';
 const SKY_LINES='${lines}';
 const SKY_NAMES='${cnames}';

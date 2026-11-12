@@ -23,6 +23,7 @@ ${fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8')}
 
 // дополнительные каталоги — отдельным файлом рядом со страницей (его собирает gen-catalogs.js)
 fs.copyFileSync(path.join(__dirname, 'catalog-extra.js'), path.join(out, 'catalog-extra.js'));
+fs.copyFileSync(path.join(__dirname, 'stars-vis.js'), path.join(out, 'stars-vis.js'));
 // номер версии — отдельным файлом рядом со страницей: его же публикуем на claude.ai, поэтому номер там и в приложении один
 const verJs = `window.APP_VERSION=${JSON.stringify(VERSION)};
 `;
@@ -36,7 +37,7 @@ write('manifest.webmanifest', JSON.stringify({
 
 // Сначала кэш (в поле сеть либо отсутствует, либо «висит»). Каждая сборка — свой кэш: новый sw.js скачивает все файлы версии разом
 // и только потом заменяет старый кэш, поэтому страница и каталог всегда из одной версии (раньше по отдельности обновлялись — и не сходились)
-const FILES = ['./', 'catalog-extra.js', 'version.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const FILES = ['./', 'catalog-extra.js', 'stars-vis.js', 'version.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 write('sw.js', `const CACHE='sky-${n}-${Date.now().toString(36)}';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(${JSON.stringify(FILES)}.map(f=>new Request(f,{cache:'reload'})))));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith('sky-')&&k!=CACHE&&k!='sky-ref').map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
