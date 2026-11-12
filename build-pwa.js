@@ -24,6 +24,8 @@ ${fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8')}
 // дополнительные каталоги — отдельным файлом рядом со страницей (его собирает gen-catalogs.js)
 fs.copyFileSync(path.join(__dirname, 'catalog-extra.js'), path.join(out, 'catalog-extra.js'));
 fs.copyFileSync(path.join(__dirname, 'stars-vis.js'), path.join(out, 'stars-vis.js'));
+// звёзды Tycho-2 (gen-stars.js): 8 МБ, в версионный кэш не кладём — иначе скачивались бы при каждом обновлении
+if (fs.existsSync(path.join(__dirname, 'tyc2.bin'))) fs.copyFileSync(path.join(__dirname, 'tyc2.bin'), path.join(out, 'tyc2.bin'));
 // номер версии — отдельным файлом рядом со страницей: его же публикуем на claude.ai, поэтому номер там и в приложении один
 const verJs = `window.APP_VERSION=${JSON.stringify(VERSION)};
 `;
@@ -44,7 +46,7 @@ self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.a
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   // снимки обзора неба и версии библиотек не меняются: раз скачанное хранится навсегда и работает без сети. Кэш модели распознавания («transformers-cache») не трогаем
-  if(u.hostname=='skyview.gsfc.nasa.gov'||u.hostname=='raw.githubusercontent.com'||u.hostname.endsWith('.wikimedia.org')||u.hostname=='cdn.jsdelivr.net'){e.respondWith(caches.open('sky-ref').then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{c.put(e.request,r.clone());return r}))));return}
+  if(u.pathname.endsWith('/tyc2.bin')||u.hostname=='skyview.gsfc.nasa.gov'||u.hostname=='raw.githubusercontent.com'||u.hostname.endsWith('.wikimedia.org')||u.hostname=='cdn.jsdelivr.net'){e.respondWith(caches.open('sky-ref').then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{c.put(e.request,r.clone());return r}))));return}
   if(e.request.method!='GET'||u.origin!=location.origin)return;
   e.respondWith(caches.open(CACHE).then(c=>c.match(e.request,{ignoreSearch:true})).then(hit=>hit||fetch(e.request)));
 });
@@ -71,7 +73,7 @@ for (const s of [192, 512]) write(`icon-${s}.png`, png(s));
 console.log('Собрано в', out, '—', fs.readdirSync(out).join(', '));
 
 if (process.argv[2] == 'serve') {
-  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+  const types = { '.bin': 'application/octet-stream', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
   require('http').createServer((req, res) => {
     const name = path.basename(new URL(req.url, 'http://x').pathname) || 'index.html'; // basename — чтобы не выйти из папки
     fs.readFile(path.join(out, name), (err, data) => {

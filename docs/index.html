@@ -89,6 +89,14 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:12p
 html.red{--muted:#c2c8d6} /* после фильтра серые подписи иначе почти не видны */
 html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-blend-mode:multiply;pointer-events:none;z-index:2147483647}
 .ref{margin:10px 0 0}
+.proj{display:flex;flex-direction:column;gap:6px;width:100%;border:1px solid var(--line);border-radius:8px;padding:8px}
+.proj progress{display:block;width:100%;height:6px;accent-color:var(--accent)}
+.pnight{display:flex;align-items:center;gap:8px}.pnight .datebox{flex:1 1 auto;min-width:0}
+.log .proj label{flex:none}.log .pnight label{display:flex;flex-direction:row;align-items:center;gap:4px;white-space:nowrap}.pnight input[type=number]{width:4.5em}
+.pnight button,.proj [data-act=nadd]{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
+.progbox{margin:6px 0}.progbox label{display:flex;flex-direction:column;gap:4px}#progTxt progress{display:block;width:100%;height:6px;margin:4px 0;accent-color:var(--accent)}
+.magtip{font-size:13px;color:var(--fg)}
+.flipsel{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .ref img[src*="skyview"],image[href*="skyview"]{filter:contrast(1.15) brightness(.92)}
 .ref img{display:block;width:100%;max-width:360px;aspect-ratio:1;background:var(--night);border-radius:6px}
 .ref figcaption{margin-top:4px;font-size:12px;color:var(--muted)}
@@ -168,6 +176,9 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
 .epset{margin:6px 0}
 .epset .cats{margin-top:4px}
 .eppre summary{cursor:pointer;color:var(--accent);font-size:13px;margin:8px 0 4px;display:list-item}
+.setupitem{display:inline-flex;gap:2px}
+#setupsel .cats button{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
+#setupsel .cats button[aria-pressed=true]{color:var(--fg);border-color:var(--accent)}
 .epadd{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .epadd input{flex:1 1 90px;width:auto}
 .epadd button,#epsel .cats button{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
@@ -205,6 +216,12 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <div class="geo"><button type="button" class="more" id="geo">📍 Координаты по геопозиции</button><span class="sub" id="geoSt" role="status"></span></div>
     <label>Вечер даты<span class="datebox"><span></span><input id="date" type="date"></span></label>
     <label>Засветка (Бортль)<select id="bortle"></select></label>
+    <fieldset class="catsel" id="setupsel"><legend>Мои сетапы — оборудование одним нажатием</legend>
+      <div class="cats" id="setupList"></div>
+      <div class="epadd"><input id="setupName" maxlength="40" placeholder="название, например «Доб 300 + ASI533»" aria-label="Название сетапа">
+        <button type="button" id="setupSave">Сохранить текущий</button></div>
+      <p class="sub">Сохраняется всё оборудование ниже: фокусное и сенсор для съёмки, апертура, фокусное телескопа, окуляры и фильтр OIII. Название сетапа попадёт в журнал съёмки.</p>
+    </fieldset>
     <h3 class="grp">Астрофото</h3>
     <label>Смарт-телескоп<select id="scope">
       <option value="">свой сетап</option>
@@ -297,6 +314,10 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
   </div>
   <p class="sub" id="qst" role="status" hidden></p>
   <div class="cats" id="cats" role="group" aria-label="Типы объектов"></div>
+  <div class="progbox" id="progBox" hidden>
+    <label>Программа наблюдений<select id="prog"><option value="">нет — обычные рекомендации</option></select></label>
+    <div id="progTxt" class="sub"></div>
+  </div>
   <div class="magrange" id="magBox" hidden>
     <span id="magTxt"></span>
     <label>от<input id="magMin" type="range" min="-1" max="16" step="0.5" aria-label="Самый яркий блеск в рекомендациях"></label>
@@ -771,6 +792,14 @@ const SHOWPIECE={M42:4,M31:2.5,M8:2,M17:2,M81:1.5,M82:1.5,M51:1,M104:1.5,M64:1,M
 const VIS_SMALL={OC:1,EN:.8,GC:.6,G:1,SNR:.6,RN:.6,PN:.8,DN:.3,GG:.5}; // галактикам вес не режем: слабые и так отсекает порог видимости
 const VIS_LARGE={OC:.7,EN:.9,GC:1,G:1,SNR:.9,RN:.8,PN:1,DN:.4,GG:.8};
 
+// ---------- Программы наблюдений: список объектов и сколько уже снято/просмотрено ----------
+// Herschel 400 (Astronomical League) — номера NGC; по ним ищем объект и среди его других обозначений
+const H400=new Set('6514,598,2422,2548,5195,4303,651,3034,4548,5866,4594,3379,4258,6171,3556,3992,205,40,6543,2403,559,663,6946,457,869,6826,7243,185,7000,4449,7662,891,2419,752,5005,7331,4631,4559,6885,4565,2392,3626,7006,7814,7479,5248,6934,2775,2244,4697,3115,2506,7009,246,2360,3242,4038,247,2362,253,5694,129,136,157,225,278,288,381,404,436,488,524,584,596,613,615,637,650,654,659,720,772,779,884,908,936,1022,1023,1027,1052,1055,1084,1245,1342,1407,1444,1501,1502,1513,1528,1535,1545,1647,1664,1788,1817,1857,1907,1931,1961,1964,1980,1999,2022,2024,2126,2129,2158,2169,2185,2186,2194,2204,2215,2232,2251,2264,2266,2281,2286,2301,2304,2311,2324,2335,2343,2353,2354,2355,2371,2395,2420,2421,2423,2438,2440,2479,2482,2489,2509,2527,2539,2567,2571,2613,2627,2655,2681,2683,2742,2768,2782,2787,2811,2841,2859,2903,2950,2964,2974,2976,2985,3077,3079,3147,3166,3169,3184,3190,3193,3198,3226,3227,3245,3277,3294,3310,3344,3377,3384,3395,3412,3414,3432,3486,3489,3504,3521,3593,3607,3608,3610,3613,3619,3621,3628,3631,3640,3655,3665,3675,3686,3726,3729,3810,3813,3877,3893,3898,3900,3912,3938,3941,3945,3949,3953,3962,3982,3998,4026,4027,4030,4036,4041,4051,4085,4088,4102,4111,4143,4147,4150,4151,4179,4203,4214,4216,4245,4251,4261,4273,4274,4278,4281,4293,4314,4346,4350,4361,4365,4371,4394,4414,4419,4429,4435,4438,4442,4448,4450,4459,4473,4477,4478,4485,4490,4494,4526,4527,4535,4536,4546,4550,4570,4596,4618,4636,4643,4654,4656,4660,4665,4666,4689,4698,4699,4725,4753,4754,4762,4781,4800,4845,4856,4866,4900,4958,4995,5033,5054,5273,5322,5363,5364,5466,5473,5474,5557,5566,5576,5631,5634,5676,5689,5746,5846,5897,5907,5982,6118,6144,6207,6217,6229,6235,6284,6287,6293,6304,6316,6342,6355,6356,6369,6401,6426,6440,6445,6451,6517,6520,6522,6528,6540,6544,6553,6568,6569,6583,6624,6629,6633,6638,6642,6645,6664,6712,6755,6756,6781,6802,6818,6823,6830,6834,6866,6882,6905,6910,6939,6940,7008,7044,7062,7086,7128,7142,7160,7209,7217,7296,7380,7448,7510,7606,7686,7723,7727,7789,7790'.split(',').map(n=>'ngc'+n));
+const catBit=k=>HAS_EXTRA?CAT_LIST.findIndex(c=>c[0]==k):-1;
+const PROGS={M:['Мессье',o=>/^Md+$/.test(o.id)||catBit('M')>=0&&o.cats>>catBit('M')&1],
+  C:['Колдуэлл',o=>catBit('C')>=0&&o.cats>>catBit('C')&1],
+  H400:['Herschel 400',o=>o.keys.some(k=>H400.has(k))]};
+const progSets={}; for(const [k,[,f]] of Object.entries(PROGS)) progSets[k]=new Set(CATALOG.filter(o=>!o.star&&f(o)));
 // ---------- Интерфейс ----------
 const $=id=>document.getElementById(id);
 if(window.APP_VERSION){$('ver').textContent=APP_VERSION; $('ver').hidden=false}
@@ -796,6 +825,7 @@ let types=new Set((saved.types||[]).filter(t=>t in TYPE_PL));
 // Прежние заметка и записи (visual.note, visual.audio) переходят в первое наблюдение
 const migrate=l=>{for(let [id,e] of Object.entries(l)){
     if(!e.photo&&!e.visual) l[id]=e={visual:{plan:e.plan,done:e.seen,note:e.note}};
+    const p=e.photo; if(p&&!p.nights&&+p.exp) p.nights=[{date:p.done||'',h:+p.exp}];
     const v=e.visual; if(v&&!v.reports&&(v.note||v.audio?.length||v.done)){v.reports=[{date:v.done||'',note:v.note||'',audio:v.audio||[]}]; delete v.note; delete v.audio}}
   return l};
 let log={}; try{log=migrate(JSON.parse(localStorage.getItem('skylog')||'{}'))}catch{}
@@ -824,14 +854,14 @@ const plural=(n,one,few,many)=>n%10==1&&n%100!=11?one:n%10>=2&&n%10<=4&&(n%100<1
 const fmtR=x=>String(x).replace('.',',');
 const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
   return [...lists.filter(l=>l.ids.includes(id)).map(l=>`${l.kind=='photo'?'фото':'визуал'}: «${l.name}»`),
-    p.done&&'снято '+ruDate(p.done)+(p.exp?', '+p.exp+' ч':'')+(p.sessions?', сессий: '+p.sessions:''),
+    p.done&&'снято '+ruDate(p.done)+(p.exp?', '+fmtH(p.exp)+(p.goal?' из '+fmtH(p.goal):'')+' ч':'')+(p.sessions>1?', ночей: '+p.sessions:''),
     v.done&&'просмотрено '+ruDate(v.done)+(v.reports?.length>1?` (наблюдений: ${v.reports.length})`:''),
     (n=>n&&'аудио: '+n)((v.reports||[]).reduce((a,x)=>a+(x.audio?.length||0),0)),
     p.rating&&'оценка фото '+fmtR(p.rating),v.rating&&'оценка визуала '+fmtR(v.rating)].filter(Boolean).join(' · ')};
 const rec=(id,kind)=>(log[id]||(log[id]={}))[kind]||(log[id][kind]={});
 // оборудование, выбранное сейчас в форме: модель смарт-телескопа или «фокусное + сенсор»
-const curGear=()=>$('scope').selectedIndex>0?$('scope').options[$('scope').selectedIndex].textContent
-  :$('focal').value&&$('sensor').value?`${$('focal').value} мм, сенсор ${$('sensor').value.replace('x','×')} мм`:'';
+const curGear=()=>setups.find(x=>x.focal&&x.focal==$('focal').value&&x.sensor==$('sensor').value)?.name||($('scope').selectedIndex>0?$('scope').options[$('scope').selectedIndex].textContent
+  :$('focal').value&&$('sensor').value?`${$('focal').value} мм, сенсор ${$('sensor').value.replace('x','×')} мм`:'');
 // ---------- Снимки: в артефакте — хранилище артефакта, вне его (установленное приложение, файл) — IndexedDB этого устройства ----------
 const idb=(mode,fn)=>new Promise((res,rej)=>{const open=indexedDB.open('sky',1);
   open.onupgradeneeded=()=>open.result.createObjectStore('photos');
@@ -1069,12 +1099,29 @@ document.addEventListener('error',e=>{const t=e.target; if(t.tagName=='IMG'||t.t
   const f=t.closest?.('.ref'); if(f) f.querySelector('figcaption').textContent='Снимок из обзора не загрузился: нужен интернет, хотя бы один раз для этого объекта.'},true);
 // свой снимок показываем и в карточке визуала, только для просмотра
 const shotImg=o=>{const i=log[o.id]?.photo?.img; return /^[\w-]{1,64}$/.test(i||'')?`<img data-img="${i}" alt="Мой снимок ${esc(o.id)}" hidden>`:''};
+// Проект на несколько ночей: photo.nights=[{date, h}], goal — цель в часах. exp (сумма часов) и sessions (число ночей) пересчитываются
+// из ночей — их читают отметки и старые версии. done — дата последней ночи: по ней журнал и фильтры
+const fmtH=h=>fmtR(+(+h||0).toFixed(2));
+function projHead(e){const sum=+e.exp||0, g=+e.goal||0, k=e.nights?.length||0;
+  return `Снято ${fmtH(sum)} ч${k?` за ${k} ${plural(k,'ночь','ночи','ночей')}`:''}${g?` из ${fmtH(g)} ч — ${Math.min(100,Math.round(sum/g*100))}%${sum>=g?' ✓ цель достигнута':''}`:''}`
+    +(g?`<progress max="${g}" value="${Math.min(sum,g)}"></progress>`:'')}
+function projHtml(e){
+  return `<div class="proj"><span class="projhead">${projHead(e)}</span>
+    ${(e.nights||[]).map((x,i)=>`<div class="pnight" data-night="${i}"><span class="datebox"><span>${fmtDate(x.date)}</span><input data-act="ndate" type="date" value="${esc(x.date||'')}" aria-label="Дата ночи съёмки"></span>
+      <label><input data-act="nh" type="number" min="0" step="0.25" value="${esc(String(x.h||''))}" aria-label="Выдержка за ночь, часов"> ч</label>
+      <button type="button" data-act="ndel" aria-label="Удалить ночь">✕</button></div>`).join('')}
+    <button type="button" data-act="nadd">+ Ночь съёмки</button>
+    <label>Цель проекта, ч<input data-act="goal" type="number" min="0" step="1" value="${esc(String(e.goal||''))}" placeholder="не задана"></label></div>`}
+function syncProj(e){const ns=e.nights||[];
+  if(!ns.length){delete e.nights; e.exp=''; e.sessions=''; return}
+  e.exp=+ns.reduce((a,x)=>a+(+x.h||0),0).toFixed(2); e.sessions=ns.length;
+  const last=ns.map(x=>x.date).filter(Boolean).sort().at(-1); if(last) e.done=last}
+const projActive=e=>+e?.goal>(+e?.exp||0); // цель не набрана — объект ещё снимается, из рекомендаций не прячем
 function photoLog(o,e){
   const gears=[...new Set([...[...$('scope').options].slice(1).map(x=>x.textContent),curGear(),e.gear].filter(Boolean))];
   const img=/^[\w-]{1,64}$/.test(e.img||'')?e.img:'';
   return `<label>Дата съёмки<span class="datebox"><span>${fmtDate(e.done)}</span><input data-act="date" type="date" value="${esc(e.done||'')}"></span></label>
-      <label>Сессий<input data-act="sessions" type="number" min="1" step="1" value="${esc(String(e.sessions||''))}"></label>
-      <label>Суммарная выдержка, ч<input data-act="exp" type="number" min="0" step="0.5" value="${esc(String(e.exp||''))}"></label>
+      ${projHtml(e)}
       <label>Оборудование<select data-act="gear"><option value="">не указано</option>${gears.map(g=>`<option${g==e.gear?' selected':''}>${esc(g)}</option>`).join('')}</select></label>
       <label>Фото результата<input data-act="img" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
       <img ${img?`data-img="${img}"`:''} alt="Результат съёмки ${esc(o.id)}" hidden>
@@ -1135,6 +1182,25 @@ const epToggle=k=>{const [fe,af]=k.split('/').map(Number); myEps=hasEp({fe,af})?
 $('epChosen').onclick=$('epPresets').onclick=e=>{const k=e.target.closest('[data-ep]')?.dataset.ep; if(k) epToggle(k)};
 $('epAdd').onclick=()=>{const fe=+$('epF').value, af=+$('epA').value; if(!(fe>0&&af>0)) return;
   if(!hasEp({fe,af})) epToggle(fe+'/'+af); $('epF').value=$('epA').value=''};
+$('prog').insertAdjacentHTML('beforeend',Object.entries(PROGS).map(([k,[nm]])=>`<option value="${k}">${nm} — ${progSets[k].size}</option>`).join(''));
+$('prog').value=saved.prog in PROGS?saved.prog:'';
+$('prog').onchange=()=>{shown=15; render()};
+// ---------- Свои сетапы: [{name, focal, sensor, aperture, tfocal, eps, oiii}] — переключение оборудования одним нажатием ----------
+let setups=Array.isArray(saved.setups)?saved.setups.filter(x=>x&&x.name):[];
+const SETUP_KEYS=['focal','sensor','aperture','tfocal'];
+const curSetup=()=>({...Object.fromEntries(SETUP_KEYS.map(k=>[k,$(k).value])),eps:myEps.map(e=>({fe:e.fe,af:e.af})),oiii:$('oiii').checked});
+const sameSetup=(a,b)=>SETUP_KEYS.every(k=>String(a[k]||'')==String(b[k]||''))&&JSON.stringify(a.eps||[])==JSON.stringify(b.eps||[])&&!!a.oiii==!!b.oiii;
+function drawSetups(){const cur=curSetup();
+  $('setupList').innerHTML=setups.length?setups.map((x,i)=>`<span class="setupitem"><button type="button" data-setup="${i}" aria-pressed="${sameSetup(x,cur)}">${esc(x.name)}</button><button type="button" data-setdel="${i}" aria-label="Удалить сетап ${esc(x.name)}">✕</button></span>`).join('')
+    :'<span class="sub">Пока нет — задайте оборудование ниже и сохраните его под своим названием.</span>'}
+$('setupSave').onclick=()=>{const name=$('setupName').value.trim()||`Сетап ${setups.length+1}`, x={name,...curSetup()}, i=setups.findIndex(y=>y.name==name);
+  if(i>=0) setups[i]=x; else setups.push(x); $('setupName').value=''; render()}; // то же название — перезаписываем
+$('setupList').onclick=e=>{const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.setdel!=null){if(b.textContent!='Точно?'){b.textContent='Точно?';setTimeout(()=>b.textContent='✕',3000);return}
+    setups.splice(+b.dataset.setdel,1); render(); return}
+  const x=setups[+b.dataset.setup]; if(!x) return;
+  for(const k of SETUP_KEYS) $(k).value=x[k]??''; myEps=(x.eps||[]).map(e=>({...e})); $('oiii').checked=!!x.oiii;
+  syncScope(); drawEps(); render()};
 $('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
@@ -1178,6 +1244,46 @@ function apertureLine(o,n,r,bortle,oiii,aperture){
     :`апертура при этих условиях: заметен от ${a} мм, уверенно ${b?'от '+b+' мм':'— больше 500 мм'}`;
   return txt+(D&&a?` (у вас ${D} мм — ${b&&D>=b?'хватит с запасом':D>=a?'на пределе':'не хватит'})`:'');
 }
+// Лучшее увеличение для объекта при апертуре D и фокусном F (эвристика в духе SkyTools). Пределы: зрачок не больше 7 мм (×D/7)
+// и не больше ×2D и ×300 (выше обычно не пускает атмосфера). Туманность или галактика — около трети поля 68° окуляра,
+// но не тусклее, чем позволяет её поверхностная яркость (тусклым — зрачок побольше). Двойная — чтобы пара разошлась с запасом
+// (глаз уверенно различает ~4′ на увеличенной картинке: 240″/расстояние). Переменные и углеродные — зрачок 2–3 мм, цвет и блеск.
+function bestMag(o,D,oiii){
+  if(!(D>0)||o.type=='DN') return null;
+  const lo=D/7, hi=Math.min(2*D,300);
+  if(o.type=='DBL'){const M=clamp(Math.max(240/o.d.sep,D/3),lo,hi); return {M,why:M>=hi?'больше не даст атмосфера и оптика':'пара разойдётся с запасом'}}
+  if(o.star) return {M:clamp(D/2.5,lo,hi),why:'зрачок 2–3 мм — цвет и блеск оценивать удобнее всего'};
+  const sb=surfB(o)+8.89, pMin=oiii&&OIII_GAIN[o.type]&&!NO_OIII.has(o.id)?3:sb<20?.8:sb<21.5?1.5:sb<23?2.5:4, cap=Math.min(hi,D/pMin);
+  const want=68/(3*Math.max(o.a,.2)/60), M=clamp(want,lo,Math.max(lo,cap));
+  return {M,why:M<=lo*1.01&&want<lo?'объект крупный — нужно самое широкое поле':M<want&&cap<hi?'сильнее — объект слишком потускнеет':M<want?'больше не даст атмосфера':'объект займёт около трети поля'}}
+function magLine(o,D,F,oiii){const b=bestMag(o,D,oiii); if(!b) return '';
+  const M=b.M, fe=F>0?F/M:0;
+  let t=`Увеличение: лучше всего около ×${Math.round(M)} (выходной зрачок ${fmtR(+(D/M).toFixed(1))} мм)${fe?` — окуляр ≈${fmtR(+fe.toFixed(fe<10?1:0))} мм`:' — укажите фокусное телескопа, подскажу окуляр'}; ${b.why}.`;
+  if(fe&&myEps.length){const ep=myEps.reduce((a,e)=>Math.abs(Math.log(F/e.fe/M))<Math.abs(Math.log(F/a.fe/M))?e:a), tf=ep.af*ep.fe/F;
+    t+=` Из ваших: ${fmtR(ep.fe)} мм — ×${Math.round(F/ep.fe)}, поле ${fmtR(+tf.toFixed(2))}°.`;
+    const wide=Math.max(...myEps.map(e=>e.af*e.fe/F)); if(!o.star&&o.a/60>wide*.9) t+=` Объект крупнее поля самого широкого вашего окуляра (${fmtR(+wide.toFixed(2))}°) — осматривайте по частям.`}
+  return `<p class="magtip">${t}</p>`}
+// ---------- Фото: прохождение меридиана и совет по фильтру на эту ночь ----------
+// верхняя кульминация — часовой угол переходит через 0; null — за эти сутки не нашлась (шаг 5 минут)
+const hourAngle=(o,x)=>((x.L-o.ra)%360+540)%360-180;
+const transitT=(o,n)=>{for(let i=1;i<n.s.length;i++) if(hourAngle(o,n.s[i-1])<0&&hourAngle(o,n.s[i])>=0) return n.s[i].t; return null};
+const transitDark=(o,n)=>{const t=transitT(o,n); return t&&t>=n.dark[0].t&&t<=n.dark.at(-1).t?t:null};
+const NARROW=new Set(['EN','SNR','PN']); // светят в линиях Hα/OIII — им помогают узкополосные фильтры
+function filterTip(o,n,r,bortle){
+  const moon=n.illum*r.moonFrac>.25, pct=Math.round(n.illum*100), smart=/Seestar|Dwarf|Vespera|Origin/i.test(curGear());
+  if(NARROW.has(o.type)) return 'Фильтр: '+(moon?`Луна (${pct}%) эмиссии мешает мало — снимайте с двухполосным фильтром Hα+OIII или узкополосными`
+    :bortle>=5?'засветка — двухполосный фильтр Hα+OIII сильно поднимет контраст туманности'
+    :'небо тёмное и без Луны — можно и без фильтра (естественные цвета звёзд), с двухполосным Hα+OIII туманность контрастнее')
+    +(smart?' (в смарт-телескопе — встроенный фильтр LP / дуал-бэнд)':'')+'.';
+  const what=o.type=='RN'?'отражательная туманность светит отражённым светом звёзд':o.type=='DN'?'тёмную пыль видно только на фоне звёзд и свечения'
+    :o.type=='OC'||o.type=='GC'?'звёздное скопление':'галактика светит светом звёзд';
+  return `Фильтр: ${what} — только широкополосная съёмка: без фильтра или с UV/IR-cut, узкополосные фильтры её гасят. `
+    +(moon?`Луна (${pct}%) сильно засветит фон — лучше выбрать безлунную ночь.`
+      :bortle>=6?'При засветке мягкий фильтр (CLS, L-Pro) помогает немного — главное здесь суммарная выдержка.':'Тёмное небо без Луны — то, что нужно.')}
+function photoTips(o,n,r,bortle,hm,lat){const t=transitT(o,n), h=Math.round(90-Math.abs(lat-o.dec));
+  const mer=!t?'':transitDark(o,n)?`Через меридиан проходит в ${hm(t)} на высоте ${h}°: на экваториальной монтировке около этого времени переворот (meridian flip) — до него объект на востоке, после на западе.${h>=80?' Почти через зенит — азимутальные монтировки (и смарт-телескопы) у зенита теряют сопровождение.':''} `
+    :`Меридиан проходит в ${hm(t)}, вне тёмного времени — переворот этой ночью не понадобится. `;
+  return `<p class="magtip">${mer}${filterTip(o,n,r,bortle)}</p>`}
 const ratingHtml=e=>`<label class="rating">Моя оценка<input type="range" data-act="rating" min="0" max="10" step="0.5" value="${+e.rating||0}"><output>${e.rating?fmtR(e.rating)+' из 10':'нет'}</output></label>`;
 // Похожие объекты — для высоко оценённых (больше 8): тот же тип, близкие размер и блеск, ещё не снятые/не просмотренные,
 // поднимаются здесь хотя бы до 20° в кульминации. Ближе всего — сверху.
@@ -1228,7 +1334,35 @@ function planetsAt(d){const T=d/36525, g=helio(EARTH,T);
 // Вид снизу вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближение до ×60 (поле ~3°) — чтобы найти объект в искателе:
 // при приближении появляются звёзды слабее (до 7,5ᵐ) и подписи объектов основного списка
 let mapIdx=null, mapKey='', mapView={z:1,cx:200,cy:200}, mapFull=false;
-let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,7.5)}catch{}
+// Звёзды слабее 7,5ᵐ — Tycho-2 до 11,5ᵐ (≈2 млн, файл tyc2.bin ≈8 МБ, собирает gen-stars.js). Грузится при первом сильном приближении
+// и потом лежит в постоянном кэше. Участки: полосы склонения по 2°, каждая разбита по RA; внутри участка звёзды от ярких к слабым
+const MAG_TOP=11.5;
+const TYC_BANDS=Array.from({length:90},(_,b)=>Math.max(1,Math.ceil(360*Math.cos((-90+(b+.5)*2)*Math.PI/180)/2))), TYC_FIRST=[];
+{let T=0; for(const n of TYC_BANDS){TYC_FIRST.push(T); T+=n} TYC_FIRST.push(T)}
+let TYC=null, tycState=''; // '' — не загружали, load, ok, err
+function loadTyc(){if(tycState) return; tycState='load';
+  fetch('tyc2.bin').then(r=>{if(!r.ok) throw 0; return r.arrayBuffer()}).then(b=>{const v=new DataView(b), T=v.getUint32(4,true);
+    if(v.getUint32(0,true)!=0x32435954||T!=TYC_FIRST.at(-1)) throw 0; // 'TYC2' и та же разбивка на участки
+    TYC={off:new Uint32Array(b,8,T+1),s:new Uint32Array(b,8+4*(T+1))}; tycState='ok'; mapRedraw()})
+  .catch(()=>{tycState='err'; mapRedraw(); setTimeout(()=>{tycState=''},3e4)})} // без сети — новая попытка не раньше чем через 30 с
+// звёзды Tycho-2 в круге rad° вокруг (ra0,dec0) ярче lim — одним path на каждую звёздную величину: тысячи <circle> телефон не тянет
+function tycSvg(ra0,dec0,rad,lim,P,vis,f1,u){const bins=['','','',''];
+  for(let b=Math.max(0,Math.floor((dec0-rad+90)/2));b<=Math.min(89,Math.floor((dec0+rad+90)/2));b++){const n=TYC_BANDS[b], dc=-90+(b+.5)*2;
+    for(let j=0;j<n;j++){if(sep({ra:(j+.5)/n*360,dec:dc},{ra:ra0,dec:dec0})>rad+1.6) continue;
+      const t=TYC_FIRST[b]+j;
+      for(let k=TYC.off[t];k<TYC.off[t+1];k++){const q=TYC.s[k], m=(q&255)/10; if(m>lim) break;
+        const p=P((j+(q>>>20)/4095)/n*360,-90+(b+(q>>>8&4095)/4095)*2); if(vis(p)) bins[Math.min(3,Math.floor(m-7.5))]+=`M${f1(p[0])} ${f1(p[1])}h0`}}}
+  return bins.map((d,i)=>d&&`<path d="${d}" fill="none" stroke="#dfe5f2" stroke-opacity="${(1-.17*i).toFixed(2)}" stroke-width="${(.7*u).toFixed(3)}" stroke-linecap="round"/>`).join('')}
+// центр вида на небе: точку карты (с учётом зеркала) переводим обратно в RA/Dec
+function viewSky(Lst,sl,cl){const [ux,uy]=flipXY(mapView.cx,mapView.cy), dx=200-ux, dy=200-uy, h0=90-Math.hypot(dx,dy)*90/190;
+  const az=Math.atan2(dx,dy), sh=sin(h0), ch=cos(h0);
+  return {h0,dec:asin(sl*sh+cl*ch*Math.cos(az)),ra:Lst-Math.atan2(-Math.sin(az)*ch,cl*sh-sl*ch*Math.cos(az))/R}}
+let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,MAG_TOP)}catch{}
+// вид как в окуляре: 0 — как на небе, 1 — зеркально (диагональ, искатель с прямым углом), 2 — перевёрнуто на 180° (Ньютон, прямой искатель).
+// Оба преобразования сами себе обратны — тем же flipXY переводим экран обратно в небо
+let mapFlip=0; try{mapFlip=clamp(+localStorage.getItem('mapFlip')||0,0,2)}catch{}
+const flipXY=(x,y)=>mapFlip==1?[400-x,y]:mapFlip==2?[400-x,400-y]:[x,y];
+const FLIP_TXT=['север сверху, восток слева — как на небе','зеркально, как в диагональ: север сверху, восток справа','перевёрнуто, как в Ньютоне: север снизу, восток справа'];
 const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
 let mapK=1; // высота области карты к ширине: 1 — квадрат, на весь экран — пропорции экрана
 function clampView(){const v=mapView; v.z=clamp(v.z,1,ZMAX); const h=200/v.z, hh=h*mapK;
@@ -1242,23 +1376,25 @@ function drawMap(n,lat,hm,L){
   // экваториальные → [x,y] на карте или null под горизонтом
   const P=(ra,dec)=>{const H=(Lst-ra)*R, sd=sin(dec), cd=cos(dec), sa=sl*sd+cl*cd*Math.cos(H);
     if(sa<0) return null; const h=Math.asin(sa)/R, az=Math.atan2(-cd*Math.sin(H),sd*cl-cd*sl*Math.cos(H));
-    const r=R0*(90-h)/90; return [200-r*Math.sin(az),200-r*Math.cos(az),h,(az/R+360)%360]};
+    const r=R0*(90-h)/90, [X,Y]=flipXY(200-r*Math.sin(az),200-r*Math.cos(az)); return [X,Y,h,(az/R+360)%360]};
   mapProj=P;
   mapK=mapFull?innerHeight/innerWidth:1; clampView();
   const z=mapView.z, half=200/z, hh=half*mapK, vx=mapView.cx-half, vy=mapView.cy-hh, u=1/z; // u — единица карты, которая на экране не меняется при приближении
   const vis=p=>p&&p[0]>vx-10*u&&p[0]<vx+2*half+10*u&&p[1]>vy-10*u&&p[1]<vy+2*hh+10*u;
   const f1=v=>v.toFixed(z>8?2:1), ns='vector-effect="non-scaling-stroke"';
-  // предел блеска: при приближении растёт сам (×1 — до 4,5ᵐ, ×7 и ближе — до 7,5ᵐ), ползунок ограничивает его сверху
-  const autoLim=Math.min(7.5,4.5+1.5*Math.log2(z)), magLim=Math.min(starLim,autoLim);
+  // предел блеска: при приближении растёт сам (×1 — до 4,5ᵐ, ×7 — до 7,5ᵐ, ×25 и ближе — до 11,5ᵐ), ползунок ограничивает его сверху
+  const autoLim=Math.min(MAG_TOP,4.5+1.5*Math.log2(z)), magLim=Math.min(starLim,autoLim);
+  if(magLim>7.5&&tycState!='ok') loadTyc();
   const objs=CATALOG.filter(o=>L.ids.includes(o.id)).map(o=>({o,p:P(o.ra,o.dec)}));
   let svg=`<circle cx="200" cy="200" r="${R0}" fill="var(--night)" stroke="var(--line)" ${ns}/>`
     +[30,60].map(h=>`<circle cx="200" cy="200" r="${R0*(90-h)/90}" fill="none" stroke="var(--line)" stroke-dasharray="3 4" ${ns}/>`).join('')
-    +[['С',200,6],['Ю',200,398],['В',4,203],['З',396,203]].map(([t,X,Y])=>`<text x="${X}" y="${Y}" text-anchor="middle" font-size="${11*u}" fill="var(--muted)">${t}</text>`).join('');
+    +[['С',200,6],['Ю',200,398],['В',4,203],['З',396,203]].map(([t,x0,y0])=>{const [X,y1]=flipXY(x0,y0); return [t,X,y0==203?203:y1<200?6:398]}).map(([t,X,Y])=>`<text x="${X}" y="${Y}" text-anchor="middle" font-size="${11*u}" fill="var(--muted)">${t}</text>`).join('');
   if(STARMAP){
     for(const l of STARMAP.lines){let d='',pen=false; // часть линии под горизонтом обрываем
       for(let i=0;i<l.length;i+=2){const p=P(l[i],l[i+1]); if(p){d+=(pen?'L':'M')+f1(p[0])+','+f1(p[1]); pen=true} else pen=false}
       if(d) svg+=`<path d="${d}" fill="none" stroke="#6c7fb0" stroke-opacity=".75" stroke-width=".9" ${ns}/>`}
     for(const [ra,dec,m] of STARMAP.stars){if(m>magLim)continue; const p=P(ra,dec); if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${(Math.max(.35,2.3-.36*m)*u).toFixed(3)}" fill="#dfe5f2"/>`}
+    if(magLim>7.5&&TYC){const c=viewSky(Lst,sl,cl); svg+=tycSvg(c.ra,c.dec,90*Math.hypot(half,hh)/R0*1.2+1,magLim,P,vis,f1,u)}
     if(z<8) for(const [nm,ra,dec] of STARMAP.names){const p=P(ra,dec); if(vis(p)) svg+=`<text x="${f1(p[0])}" y="${f1(p[1])}" text-anchor="middle" font-size="${8*u}" fill="#7f8db3" opacity=".8">${esc(nm)}</text>`}
   }
   // при приближении — остальные объекты основного списка блёклыми кружками, чтобы было от чего «прыгать»
@@ -1279,16 +1415,17 @@ function drawMap(n,lat,hm,L){
   mapArgs=[n,lat,hm,L];
   // при движении ползунка и масштабировании меняем только небо, время и список — ползунок не пересоздаём, иначе палец «соскакивает»
   const t=$('mapT');
-  const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`;
+  const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`+(magLim>7.5&&tycState=='load'?' · загружаю слабые звёзды (8 МБ, один раз)…':magLim>7.5&&tycState=='err'?' · слабые звёзды не загрузились — нужен интернет один раз':'');
   if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapZoom').textContent=zTxt; $('starTxt').textContent=starTxt; $('mapSky').setAttribute('viewBox',vb); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
   $('map').innerHTML=`<button type="button" class="mapback" data-z="full">← Назад</button><div class="mapctl">
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
-      <button type="button" data-z="full">На весь экран</button></div>
-    <label class="starbar"><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
+      <button type="button" data-z="full">На весь экран</button>
+      <label class="flipsel">Вид<select id="mapFlip">${['как на небе','зеркально (диагональ)','перевёрнуто (Ньютон)'].map((t,i)=>`<option value="${i}"${i==mapFlip?' selected':''}>${t}</option>`).join('')}</select></label></div>
+    <label class="starbar"><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="${MAG_TOP}" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
-    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно.</p>
+    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, <span id="flipTxt">${FLIP_TXT[mapFlip]}</span>. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно.</p>
     <div id="mapList">${listHtml}</div>`;
 }
 let mapArgs=null, mapRaf=0;
@@ -1297,8 +1434,7 @@ const eyepieces=()=>myEps;
 // круги поля окуляров в центре карты: двигаете карту — круги остаются на месте, как в окуляре. Масштаб берём в самом центре вида
 // (проекция к краю растягивается), поэтому центр переводим обратно в RA/Dec и смотрим, сколько единиц карты занимает 1°
 function eyepieceCircles(Lst,sl,cl,P,u){const ft=+$('tfocal').value, eps=eyepieces(); if(!(ft>0)||!eps.length) return '';
-  const cx=mapView.cx, cy=mapView.cy, dx=200-cx, dy=200-cy, h0=90-Math.hypot(dx,dy)*90/190; if(h0<=0) return '';
-  const az=Math.atan2(dx,dy), sh=sin(h0), ch=cos(h0), dec=asin(sl*sh+cl*ch*Math.cos(az)), ra=Lst-Math.atan2(-Math.sin(az)*ch,cl*sh-sl*ch*Math.cos(az))/R;
+  const cx=mapView.cx, cy=mapView.cy, {h0,ra,dec}=viewSky(Lst,sl,cl); if(h0<=0) return '';
   const pn=P(ra,dec+.5), pe=P(ra+.5/Math.max(cos(dec),.05),dec); if(!pn||!pe) return '';
   const k=(Math.hypot(pn[0]-cx,pn[1]-cy)+Math.hypot(pe[0]-cx,pe[1]-cy)); // единиц карты на градус: (на 0,5° к северу + на 0,5° к востоку)
   return eps.map(({fe,af})=>{const tf=af*fe/ft, r=tf/2*k; if(r<3*u) return '';
@@ -1348,7 +1484,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1359,6 +1495,7 @@ function render(){
   $('catLegend').textContent=`Каталоги в рекомендациях — ${mode=='photo'?'для съёмки':'для визуала'}`;
   for(const b of $('catList').querySelectorAll('input')) b.checked=catSets[mode].has(b.value);
   const lo=+$('magMin').value, hi=+$('magMax').value;
+  $('progBox').hidden=tab!='rec'; drawSetups();
   $('magBox').hidden=mode!='visual'||tab!='rec'; $('magTxt').textContent=magTxt(lo,hi);
   $('cats').hidden=tab!='rec'; for(const b of $('cats').children) b.hidden=mode=='photo'&&STAR_TYPES.has(b.dataset.type);
   if(mode=='photo') for(const t of STAR_TYPES) types.delete(t); $('qrow').hidden=tab=='map'; if(tab=='map') $('qst').hidden=true; $('listBar').hidden=tab!='plan'&&tab!='map';
@@ -1402,8 +1539,12 @@ function render(){
   const order=r=>r.h?r.tMax:9e15;
   // фильтр «снятое и просмотренное» действует только на рекомендации: «скрывать» или «только они» (быстрый обзор результатов)
   const doneF=!mine&&!q?$('doneF').value:'', isDone=o=>!!log[o.id]?.[kind]?.done, doneOf=o=>log[o.id]?.[kind]?.done||'';
+  const prog=!mine&&!q&&progSets[$('prog').value];
+  if(prog){const k=[...prog].filter(isDone).length, N=prog.size;
+    $('progTxt').innerHTML=`${kind=='photo'?'Снято':'Просмотрено'} ${k} из ${N} (${Math.round(k/N*100)}%)<progress max="${N}" value="${k}"></progress>Ниже — объекты программы, доступные этой ночью${doneF=='hide'?', кроме уже отмеченных':''}.`}
+  else $('progTxt').textContent='';
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?isDone(o)
-    :(doneF=='hide'?!isDone(o):doneF=='only'?isDone(o):true)&&(q||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
+    :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
   const all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
@@ -1423,7 +1564,7 @@ function render(){
     return `${dh}<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
       <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
       <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
-      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
+      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${kind=='photo'&&transitDark(o,n)?' · меридиан '+hm(transitDark(o,n)):''}${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
       ${o.star?(([a,b])=>`<span class="facts">${a}</span>
       <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)} · ${b}</span>`)(starInfo(o,n,hm,bortle,aperture))
       :`<span class="facts">${physLine(o)}</span>
@@ -1437,6 +1578,7 @@ function render(){
       </svg>
       <div class="ticks">${ticksHtml}</div>
       <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°.${o.alias?` Другие обозначения: ${esc(o.alias.replace(/,/g,', '))}.`:''}</p>
+      ${kind=='visual'?magLine(o,+aperture,+$('tfocal').value,oiii):photoTips(o,n,r,bortle,hm,lat)}
       ${refImg(o,kind,fov,r.fill)}${kind=="photo"&&fov&&window.claude?frameHtml(o,fov,r.fill):""}
     </div><div class="log" data-kind="${kind}">
       <span class="lbl">В план:</span>${kindLists.map(l=>`<button type="button" data-act="list" data-list="${l.id}" aria-pressed="${l.ids.includes(o.id)}">${esc(l.name)}</button>`).join('')}
@@ -1474,6 +1616,8 @@ const showSetup=open=>{$('setup').hidden=!open; $('gear').setAttribute('aria-pre
 $('gear').onclick=()=>showSetup($('setup').hidden);
 $('setupDone').onclick=()=>{showSetup(false); window.scrollTo({top:0,behavior:'smooth'})};
 // Отметки и заметки правят карточку на месте, без перерисовки списка: иначе раскрытая карточка схлопнется, а поле потеряет фокус
+const projSync=(box,r)=>{const d=box.querySelector('[data-act=date]'); if(d&&d.value!=(r.done||'')){d.value=r.done||''; d.previousElementSibling.textContent=fmtDate(d.value)}
+  box.querySelector('[data-act=done]').setAttribute('aria-pressed',!!r.done)};
 function logChanged(card){const id=card.dataset.id, e=log[id];
   if(e.visual&&!e.visual.reports?.length){delete e.visual.reports; delete e.visual.done} // последнее наблюдение удалили
   for(const k of ['photo','visual']) if(e[k]&&!Object.values(e[k]).some(Boolean)) delete e[k];
@@ -1507,6 +1651,13 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
       photos.del(b.dataset.id); rep.audio=(rep.audio||[]).filter(x=>x!=b.dataset.id); b.closest('.aud').remove()}
     logChanged(card); return}
   const r=rec(card.dataset.id,kind);
+  if(act=='nadd'||act=='ndel'){
+    if(act=='nadd') (r.nights||(r.nights=[])).push({date:$('date').value,h:''});
+    else{if(b.textContent!='Точно?'){b.textContent='Точно?';setTimeout(()=>b.textContent='✕',3000);return}
+      r.nights.splice(+b.closest('.pnight').dataset.night,1)}
+    syncProj(r); box.querySelector('.proj').outerHTML=projHtml(r); projSync(box,r);
+    if(act=='nadd') box.querySelector('.pnight:last-of-type [data-act=nh]')?.focus();
+    logChanged(card); return}
   if(act=='rec'){toggleRec(b,card,box);return}
   if(act=='stt'){transcribe(b,card,box);return}
   if(act=='clrnote'){ // текст не вернуть, поэтому тоже в два нажатия
@@ -1529,6 +1680,9 @@ $('list').oninput=ev=>{const t=ev.target, act=t.dataset.act;
     for(const p of $('list').querySelectorAll('polygon[data-geo]')) p.setAttribute('points',framePts(JSON.parse(p.dataset.geo),camRot).map(q=>q.map(v=>v.toFixed(2)).join(',')).join(' '));
     for(const r of $('list').querySelectorAll('[data-act=rot]')){r.value=camRot; r.nextElementSibling.textContent=camRot+'°'}
     return}
+  if(['nh','ndate','goal'].includes(act)){const card=t.closest('details'), box=t.closest('.log'), r=rec(card.dataset.id,'photo');
+    if(act=='goal') r.goal=t.value; else r.nights[+t.closest('.pnight').dataset.night][act=='nh'?'h':'date']=t.value;
+    syncProj(r); box.querySelector('.projhead').innerHTML=projHead(r); projSync(box,r); logChanged(card); return}
   if(!['exp','gear','note','sessions','date','rating','rdate'].includes(act))return;
   const card=t.closest('details'), box=t.closest('.log');
   if(box.dataset.kind=='visual'&&(act=='note'||act=='rdate')){const {r,rep}=repOf(card,t); if(!rep)return;
@@ -1644,6 +1798,7 @@ async function voiceSearch(){
 $('qmic').hidden=!canRec; $('qmic').onclick=voiceSearch;
 $('q').addEventListener('input',()=>{$('qst').hidden=true});
 // ползунок времени: не чаще кадра экрана и без полной перерисовки страницы
+$('map').onchange=e=>{if(e.target.id=='mapFlip'){const [ux,uy]=flipXY(mapView.cx,mapView.cy); mapFlip=+e.target.value; [mapView.cx,mapView.cy]=flipXY(ux,uy); /* в центре — та же точка неба */ try{localStorage.setItem('mapFlip',mapFlip)}catch{} $('flipTxt').textContent=FLIP_TXT[mapFlip]; mapRedraw()}};
 $('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}
   else if(e.target.id=='starLim'){starLim=+e.target.value; try{localStorage.setItem('starLim',starLim)}catch{} mapRedraw()}};
 render();
