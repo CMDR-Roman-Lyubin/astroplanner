@@ -970,7 +970,7 @@ let camRot=0; try{camRot=+localStorage.getItem('camRot')||0}catch{}
 function framePts(g,rot){const c=Math.cos(rot*R), s=Math.sin(rot*R);
   return [[g.w,g.h],[-g.w,g.h],[-g.w,-g.h],[g.w,-g.h]].map(([x,y])=>{let X=x*c-y*s-g.TL[0], Y=x*s+y*c-g.TL[1];
     return [(X*g.V[1]-Y*g.V[0])/g.det*100,(g.U[0]*Y-g.U[1]*X)/g.det*g.H]})}
-function frameOverlay(o,fov,fill,url,TL,TR,BL,cap){
+function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg){
   const U=[TR[0]-TL[0],TR[1]-TL[1]], V=[BL[0]-TL[0],BL[1]-TL[1]], det=U[0]*V[1]-U[1]*V[0];
   const asp=Math.hypot(...V)/Math.hypot(...U), H=100*asp;
   const g={TL,U,V,det,H,w:fov[0]/120,h:fov[1]/120}, pts=framePts(g,camRot);
@@ -978,8 +978,13 @@ function frameOverlay(o,fov,fill,url,TL,TR,BL,cap){
   const all=Array.from({length:12},(_,i)=>framePts(g,i*15)).flat();
   const xs=[0,100,...all.map(p=>p[0])], ys=[0,H,...all.map(p=>p[1])], pad=3;
   const x0=Math.min(...xs)-pad, y0=Math.min(...ys)-pad, vw=Math.max(...xs)+pad-x0, vh=Math.max(...ys)+pad-y0;
+  // подложка DSS (север сверху, восток слева) на всё поле рамки при любом повороте: ставим её тремя углами через ту же привязку к небу
+  let under='';
+  if(bg){const S=+clamp(Math.hypot(...fov)/60*1.15,.2,8).toFixed(2), s=S/2, uv=([x,y])=>{x-=TL[0]; y-=TL[1]; return [(x*V[1]-y*V[0])/det*100,(U[0]*y-U[1]*x)/det*H]};
+    const a=uv([s,s]), b=uv([-s,s]), c=uv([s,-s]), m=[(b[0]-a[0])/100,(b[1]-a[1])/100,(c[0]-a[0])/100,(c[1]-a[1])/100,a[0],a[1]];
+    under=`<image href="https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=600&Return=JPEG" width="100" height="100" preserveAspectRatio="none" opacity=".45" transform="matrix(${m.map(v=>v.toFixed(4)).join(' ')})"/>`}
   return `<figure class="ref frame"><svg viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" style="aspect-ratio:${(vw/vh).toFixed(3)}" role="img" aria-label="Снимок объекта с рамкой вашего кадра">
-    <image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"/>
+    ${under}<image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"${bg?' style="mix-blend-mode:screen"':''}/>
     <polygon data-geo='${JSON.stringify(g)}' points="${pts.map(p=>p.map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="none" stroke="#7fd3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
     <label class="rot">Поворот кадра<input type="range" data-act="rot" min="0" max="179" step="1" value="${camRot}" aria-label="Поворот кадра на небе"><output>${camRot}°</output></label>
     <figcaption>${cap} · голубая рамка — ваш кадр ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}°: ${fitTip(o,fov,fill)}. Поворот 0° — длинная сторона по линии восток–запад; у смарт-телескопов на альт-азимутальной монтировке кадр за ночь поворачивается сам.</figcaption></figure>`}
@@ -1044,11 +1049,12 @@ function refImg(o,kind,fov,fill){
   if(kind=='photo'&&fov&&!window.claude){
     if(st&&st[2]){const c=st[2], T=i=>tangent(o,c[2*i],c[2*i+1]);   // углы: 0 низ-лево, 1 низ-право, 2 верх-право, 3 верх-лево
       const tl=T(3), tr=T(2), imgW=Math.hypot(tr[0]-tl[0],tr[1]-tl[1]);
-      // снимок намного меньше кадра (M57 в широкопольник) — на нём рамка ничего не покажет: цветной снимок как есть, рамка ниже на широком DSS
-      if(fov[0]/60<=2*imgW) return frameOverlay(o,fov,fill,url,tl,tr,T(0),cap)}
-    if(st||!wk){const pre=st?refImg(o,kind):'';const S=+clamp(Math.max(refFov(o),fov[0]*1.25/60),.15,8).toFixed(2), s=S/2;
+      // кадр больше цветного снимка (снимки Stellarium обычно обрезаны вплотную к объекту) — вокруг подкладываем небо DSS,
+      // привязанное к тем же координатам: одна картинка, цветной объект в центре и рамка целиком
+      return frameOverlay(o,fov,fill,url,tl,tr,T(0),cap+(fov[0]/60>imgW?' · вокруг — небо из обзора DSS2':''),fov[0]/60>imgW)}
+    if(!wk){const S=+clamp(Math.max(refFov(o),fov[0]*1.25/60),.15,8).toFixed(2), s=S/2;
       const u=`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=500&Return=JPEG`;
-      return pre+frameOverlay(o,fov,fill,u,[s,s],[-s,s],[s,-s],`Обзор DSS2, NASA SkyView · поле ${fmtR(S)}° · север сверху, восток слева`)}
+      return frameOverlay(o,fov,fill,u,[s,s],[-s,s],[s,-s],`Обзор DSS2, NASA SkyView · поле ${fmtR(S)}° · север сверху, восток слева`)}
     return refImg(o,kind)+frameHtml(o,fov,fill)}
   return window.claude
     ?`<p><a href="${url}" target="_blank" rel="noopener">${st||wk?'Цветной снимок':'Снимок из обзора неба DSS2'}: ${esc(o.id)}</a> — откроется в браузере.</p>`
@@ -1297,6 +1303,13 @@ function eyepieceCircles(Lst,sl,cl,P,u){const ft=+$('tfocal').value, eps=eyepiec
       +`<text x="${cx.toFixed(2)}" y="${(cy-r-3*u).toFixed(2)}" text-anchor="middle" font-size="${9*u}" fill="#9be37f">${fmtR(fe)} мм · ×${Math.round(ft/fe)} · ${fmtR(+tf.toFixed(2))}°</text>`}).join('')}
 // на весь экран: слой карты поверх страницы. Системный полноэкранный режим не включаем — Android при нём показывает
 // плашку «чтобы выйти, проведите…», и она закрывает ползунок яркости внизу
+// На карте неба экран не гаснет (Wake Lock): телефон в руке у телескопа, руки заняты. Система снимает блокировку,
+// когда приложение уходит в фон, — при возвращении берём её снова. Где Wake Lock нет, просто ничего не происходит
+let wakeLock=null, wantAwake=false;
+async function keepAwake(on){wantAwake=on;
+  try{if(on&&!wakeLock&&navigator.wakeLock&&document.visibilityState=='visible'){wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null})}
+    else if(!on&&wakeLock){const w=wakeLock; wakeLock=null; await w.release()}}catch{}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible'&&wantAwake) keepAwake(true)});
 function setMapFull(on,fromHistory){mapFull=on; $('map').classList.toggle('full',on);
   // запись в истории: жест «назад» Android сворачивает карту, а не закрывает приложение
   if(on&&!fromHistory) history.pushState({mapFull:1},''); else if(!on&&!fromHistory&&history.state?.mapFull) history.back();
@@ -1346,7 +1359,7 @@ function render(){
   $('magBox').hidden=mode!='visual'||tab!='rec'; $('magTxt').textContent=magTxt(lo,hi);
   $('cats').hidden=tab!='rec'; for(const b of $('cats').children) b.hidden=mode=='photo'&&STAR_TYPES.has(b.dataset.type);
   if(mode=='photo') for(const t of STAR_TYPES) types.delete(t); $('qrow').hidden=tab=='map'; if(tab=='map') $('qst').hidden=true; $('listBar').hidden=tab!='plan'&&tab!='map';
-  $('list').hidden=tab=='map'; $('map').hidden=tab!='map';
+  $('list').hidden=tab=='map'; $('map').hidden=tab!='map'; keepAwake(tab=='map'&&mode=='visual');
   const L=listOf(mode);
   $('lists').innerHTML=lists.filter(l=>l.kind==mode).map(l=>`<button type="button" data-list="${l.id}" aria-pressed="${l==L}">${esc(l.name)} <small>${l.ids.length}</small></button>`).join('');
   if(document.activeElement!=$('listName')) $('listName').value=L.name;
