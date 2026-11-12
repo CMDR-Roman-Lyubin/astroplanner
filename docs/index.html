@@ -25,6 +25,11 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 input,select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-width:0;width:100%;box-sizing:border-box}
 input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.datebox{position:relative;display:block;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 30px 7px 8px;font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.datebox::after{content:"📅";position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:13px;opacity:.55;filter:grayscale(1)} /* значок календаря на месте системного */
+.datebox:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.datebox input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;padding:0;border:0}
+.log .datebox{background:var(--bg)}
 .bar{position:relative;height:18px;border-radius:4px;border:1px solid var(--line)}
 .moonbar{height:5px;border-radius:3px;margin-top:3px}
 .ticks{position:relative;height:18px;font:11px var(--mono);color:var(--muted)}
@@ -88,7 +93,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:12p
     <label>Город<select id="city"></select></label>
     <label>Широта, °<input id="lat" type="number" step="0.01" min="-90" max="90"></label>
     <label>Долгота, °<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
-    <label>Вечер даты<input id="date" type="date"></label>
+    <label>Вечер даты<span class="datebox"><span></span><input id="date" type="date"></span></label>
     <label>Засветка (Бортль)<select id="bortle"></select></label>
     <label>Смарт-телескоп<select id="scope">
       <option value="">свой сетап</option>
@@ -537,6 +542,11 @@ const migrate=l=>{for(const [id,e] of Object.entries(l)) if(!e.photo&&!e.visual)
 let log={}; try{log=migrate(JSON.parse(localStorage.getItem('skylog')||'{}'))}catch{}
 let cloud=null, assetsApi=null, busy=false, again=false, cloudTimer;
 const ruDate=d=>d.split('-').reverse().join('.');
+// Поле даты: Chromium с русским форматом рисует в нём лишнюю точку в начале («.11.11.2026»), и стилями её отдельно не убрать.
+// Поэтому дату показываем своим текстом, а прозрачное системное поле лежит поверх — нажатие открывает обычный календарь.
+const fmtDate=v=>v?new Date(v+'T12:00Z').toLocaleDateString('ru',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).replace(' г.',''):'не указана';
+document.addEventListener('input',e=>{if(e.target.matches?.('.datebox input')) e.target.previousElementSibling.textContent=fmtDate(e.target.value)});
+document.addEventListener('click',e=>{if(e.target.matches?.('.datebox input')) try{e.target.showPicker()}catch{}}); // на компьютере иначе клик лишь ставит курсор
 const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
   return [p.plan&&'фото в плане',p.done&&'снято '+ruDate(p.done)+(p.exp?', '+p.exp+' ч':'')+(p.sessions?', сессий: '+p.sessions:''),v.plan&&'визуал в плане',v.done&&'просмотрено '+ruDate(v.done)].filter(Boolean).join(' · ')};
 const rec=(id,kind)=>(log[id]||(log[id]={}))[kind]||(log[id][kind]={});
@@ -564,7 +574,7 @@ const shotImg=o=>{const i=log[o.id]?.photo?.img; return /^[\w-]{1,64}$/.test(i||
 function photoLog(o,e){
   const gears=[...new Set([...[...$('scope').options].slice(1).map(x=>x.textContent),curGear(),e.gear].filter(Boolean))];
   const img=/^[\w-]{1,64}$/.test(e.img||'')?e.img:'';
-  return `<label>Дата съёмки<input data-act="date" type="date" value="${esc(e.done||'')}"></label>
+  return `<label>Дата съёмки<span class="datebox"><span>${fmtDate(e.done)}</span><input data-act="date" type="date" value="${esc(e.done||'')}"></span></label>
       <label>Сессий<input data-act="sessions" type="number" min="1" step="1" value="${esc(String(e.sessions||''))}"></label>
       <label>Суммарная выдержка, ч<input data-act="exp" type="number" min="0" step="0.5" value="${esc(String(e.exp||''))}"></label>
       <label>Оборудование<select data-act="gear"><option value="">не указано</option>${gears.map(g=>`<option${g==e.gear?' selected':''}>${esc(g)}</option>`).join('')}</select></label>
@@ -616,6 +626,7 @@ function render(){
   const fov=fieldOfView(focal,sensor);
   try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked}))}catch{}
   const city=CITIES[$('city').value];
+  $('date').previousElementSibling.textContent=fmtDate(date);
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
   const tf=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',timeZone:city?.tz}), hm=t=>tf.format(t);
   const n=night(lat,lon,date);
@@ -701,7 +712,7 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
   else{r[act]=act=='plan'?!r.plan:r.done?'':$('date').value; // дата съёмки или просмотра — выбранный вечер
     // при первой отметке «Снято» подставляем оборудование, выбранное в форме
     if(act=='done'&&r.done&&kind=='photo'&&!r.gear&&curGear()){r.gear=curGear(); box.querySelector('[data-act=gear]').value=r.gear}
-    if(act=='done'){const d=box.querySelector('[data-act=date]'); if(d)d.value=r.done||''}
+    if(act=='done'){const d=box.querySelector('[data-act=date]'); if(d){d.value=r.done||''; d.previousElementSibling.textContent=fmtDate(d.value)}}
     b.setAttribute('aria-pressed',!!r[act])}
   logChanged(card)};
 $('list').oninput=ev=>{const t=ev.target, act=t.dataset.act; if(!['exp','gear','note','sessions','date'].includes(act))return;
