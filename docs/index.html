@@ -164,6 +164,13 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
 #catList label{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
 #catList label small{color:var(--muted)}
 #catList input{margin:4px 0;flex:none}
+.epset{margin:6px 0}
+.epset .cats{margin-top:4px}
+.eppre summary{cursor:pointer;color:var(--accent);font-size:13px;margin:8px 0 4px;display:list-item}
+.epadd{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.epadd input{flex:1 1 90px;width:auto}
+.epadd button,#epsel .cats button{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
+#epsel .cats button[aria-pressed=true]{color:var(--bg);background:var(--accent);border-color:var(--accent)}
 .catbtns{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
 .catbtns button{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
 </style>
@@ -228,7 +235,14 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <h3 class="grp">Визуал</h3>
     <label>Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
     <label>Фокусное телескопа, мм<input id="tfocal" type="number" min="100" step="10" placeholder="например, 1500"></label>
-    <label>Окуляры: фокус/поле°<input id="eps" type="text" inputmode="decimal" placeholder="25/52, 10/68" aria-describedby="epsHelp"><span class="sub" id="epsHelp">через запятую; поле — видимое поле окуляра из его паспорта</span></label>
+    <fieldset class="catsel" id="epsel"><legend>Мои окуляры — круги поля на карте неба</legend>
+      <div class="cats" id="epChosen" aria-label="Выбранные окуляры — нажмите, чтобы убрать"></div>
+      <details class="eppre"><summary>Выбрать из стандартных</summary><div id="epPresets"></div></details>
+      <div class="epadd"><input id="epF" type="number" min="2" max="60" step="0.1" placeholder="фокус, мм" aria-label="Фокус окуляра, мм">
+        <input id="epA" type="number" min="30" max="120" step="1" placeholder="поле, °" aria-label="Видимое поле окуляра, градусы">
+        <button type="button" id="epAdd">Добавить свой</button></div>
+      <p class="sub">Поле — видимое поле окуляра из его паспорта (52° у Плёссла, 68°, 82°, 100° у широкоугольных).</p>
+    </fieldset>
     <label>Фильтр OIII<input id="oiii" type="checkbox"></label>
     <label>Расшифровка голоса<select id="asr">
       <option value="fast">Быстрая (модель ≈80 МБ)</option>
@@ -1092,7 +1106,26 @@ $('bortle').innerHTML=['','1 — идеально тёмное','2 — тёмн�
 const now=new Date(); now.setHours(now.getHours()-12); // до полудня ещё идёт «вчерашняя» ночь
 $('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
-for(const id of ['focal','sensor','aperture','tfocal','eps']) $(id).value=saved[id]??'';
+for(const id of ['focal','sensor','aperture','tfocal']) $(id).value=saved[id]??'';
+// ---------- Окуляры: стандартные серии + свои. Хранятся списком {fe — фокус мм, af — видимое поле °} ----------
+const EP_SETS=[['Плёссл / Super Plössl 52°',52,[40,32,25,20,15,12.5,10,6.3]],['Celestron X-Cel LX 60°',60,[25,18,12,9,7,5]],
+  ['Explore Scientific 68° / Baader Hyperion 68°',68,[34,28,24,20,16,13,10,8,5]],['TeleVue Panoptic 68°',68,[41,35,27,24,19]],
+  ['TeleVue Delos 72°',72,[17.3,14,12,10,8,6,4.5]],['Explore Scientific 82° / TeleVue Nagler 82°',82,[30,24,18,14,11,8.8,6.7,4.7]],
+  ['Explore Scientific 100° / TeleVue Ethos 100°',100,[25,20,14,9,5.5]]];
+// прежнее текстовое поле «25/52, 10/68» превращаем в список
+let myEps=Array.isArray(saved.eps)?saved.eps.filter(e=>e.fe>0&&e.af>0)
+  :String(saved.eps||'').split(/[,;]/).map(s=>s.trim().match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/)).filter(Boolean).map(m=>({fe:+m[1],af:+m[2]}));
+const epKey=e=>e.fe+'/'+e.af, hasEp=e=>myEps.some(x=>epKey(x)==epKey(e));
+function drawEps(){myEps.sort((a,b)=>b.fe-a.fe);
+  $('epChosen').innerHTML=myEps.length?myEps.map(e=>`<button type="button" data-ep="${epKey(e)}" aria-pressed="true" title="Убрать">${fmtR(e.fe)} мм · ${e.af}° ✕</button>`).join('')
+    :'<span class="sub">Пока не выбраны — отметьте свои ниже.</span>';
+  $('epPresets').innerHTML=EP_SETS.map(([n,af,fs])=>`<div class="epset"><span class="sub">${n}</span><div class="cats">${fs.map(fe=>
+    `<button type="button" data-ep="${fe}/${af}" aria-pressed="${hasEp({fe,af})}">${fmtR(fe)} мм</button>`).join('')}</div></div>`).join('')}
+drawEps();
+const epToggle=k=>{const [fe,af]=k.split('/').map(Number); myEps=hasEp({fe,af})?myEps.filter(x=>epKey(x)!=k):[...myEps,{fe,af}]; drawEps(); render()};
+$('epChosen').onclick=$('epPresets').onclick=e=>{const k=e.target.closest('[data-ep]')?.dataset.ep; if(k) epToggle(k)};
+$('epAdd').onclick=()=>{const fe=+$('epF').value, af=+$('epA').value; if(!(fe>0&&af>0)) return;
+  if(!hasEp({fe,af})) epToggle(fe+'/'+af); $('epF').value=$('epA').value=''};
 $('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
@@ -1251,7 +1284,7 @@ function drawMap(n,lat,hm,L){
 }
 let mapArgs=null, mapRaf=0;
 // Окуляры из настроек: «25/52, 10/68» → [{fe:25,af:52}, …]; истинное поле = видимое поле × фокус окуляра / фокус телескопа
-const eyepieces=()=>($('eps').value||'').split(/[,;]/).map(s=>s.trim().replace(',','.').match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/)).filter(Boolean).map(m=>({fe:+m[1],af:+m[2]}));
+const eyepieces=()=>myEps;
 // круги поля окуляров в центре карты: двигаете карту — круги остаются на месте, как в окуляре. Масштаб берём в самом центре вида
 // (проекция к краю растягивается), поэтому центр переводим обратно в RA/Dec и смотрим, сколько единиц карты занимает 1°
 function eyepieceCircles(Lst,sl,cl,P,u){const ft=+$('tfocal').value, eps=eyepieces(); if(!(ft>0)||!eps.length) return '';
@@ -1299,7 +1332,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:$('eps').value,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1414,7 +1447,7 @@ $('geo').onclick=()=>{const st=$('geoSt');
     e=>{st.textContent=e.code==1?'Доступ к геопозиции запрещён — разрешите его для приложения в настройках телефона.':'Не удалось определить местоположение. Выйдите на открытое место и попробуйте ещё раз.'},
     {enableHighAccuracy:false,timeout:20000,maximumAge:6e5})};
 for(const id of ['lat','lon']) $(id).oninput=()=>{$('city').value=-1;render()};
-$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('doneF').onchange=$('aperture').oninput=$('q').oninput=$('tfocal').oninput=$('eps').oninput=render;
+$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('doneF').onchange=$('aperture').oninput=$('q').oninput=$('tfocal').oninput=render;
 // Смарт-телескоп — это просто готовая пара «фокусное + сенсор»; ручная правка любого из них сбрасывает выбор модели
 const syncScope=()=>{$('scope').value=`${$('focal').value}|${$('sensor').value}`; if($('scope').selectedIndex<0)$('scope').value=''};
 $('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal').value=f;$('sensor').value=s} render()};
