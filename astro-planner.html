@@ -1031,6 +1031,7 @@ const prefetchFields=ids=>{if(window.claude||!navigator.onLine)return; for(const
 // Вид снизу вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближение до ×60 (поле ~3°) — чтобы найти объект в искателе:
 // при приближении появляются звёзды слабее (до 7,5ᵐ) и подписи объектов основного списка
 let mapIdx=null, mapKey='', mapView={z:1,cx:200,cy:200}, mapFull=false;
+let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,7.5)}catch{}
 const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
 function clampView(){const v=mapView; v.z=clamp(v.z,1,ZMAX); const h=200/v.z; v.cx=clamp(v.cx,h,400-h); v.cy=clamp(v.cy,h,400-h)}
 let mapProj=null; // текущая проекция — для перехода к объекту по нажатию в списке
@@ -1047,7 +1048,8 @@ function drawMap(n,lat,hm,L){
   const z=mapView.z, half=200/z, vx=mapView.cx-half, vy=mapView.cy-half, u=1/z; // u — единица карты, которая на экране не меняется при приближении
   const vis=p=>p&&p[0]>vx-10*u&&p[0]<vx+2*half+10*u&&p[1]>vy-10*u&&p[1]<vy+2*half+10*u;
   const f1=v=>v.toFixed(z>8?2:1), ns='vector-effect="non-scaling-stroke"';
-  const magLim=Math.min(7.5,5+1.5*Math.log2(z));
+  // предел блеска: при приближении растёт сам (×1 — до 5ᵐ, ×5 и ближе — до 7,5ᵐ), ползунок ограничивает его сверху
+  const autoLim=Math.min(7.5,5+1.5*Math.log2(z)), magLim=Math.min(starLim,autoLim);
   const objs=CATALOG.filter(o=>L.ids.includes(o.id)).map(o=>({o,p:P(o.ra,o.dec)}));
   let svg=`<circle cx="200" cy="200" r="${R0}" fill="var(--night)" stroke="var(--line)" ${ns}/>`
     +[30,60].map(h=>`<circle cx="200" cy="200" r="${R0*(90-h)/90}" fill="none" stroke="var(--line)" stroke-dasharray="3 4" ${ns}/>`).join('')
@@ -1085,11 +1087,13 @@ function drawMap(n,lat,hm,L){
   mapArgs=[n,lat,hm,L]; prefetchFields(L.ids);
   // при движении ползунка и масштабировании меняем только небо, время и список — ползунок не пересоздаём, иначе палец «соскакивает»
   const t=$('mapT');
-  if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapZoom').textContent=zTxt; $('mapSky').setAttribute('viewBox',vb); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
+  const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`;
+  if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapZoom').textContent=zTxt; $('starTxt').textContent=starTxt; $('mapSky').setAttribute('viewBox',vb); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
   $('map').innerHTML=`<div class="mapctl">
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full" aria-pressed="${mapFull}">${mapFull?'Свернуть':'На весь экран'}</button></div>
+    <label><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
     <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно, со снимком неба вокруг (звёзды гораздо слабее 14ᵐ) — для поиска через окуляр. Снимки скачиваются заранее, пока есть интернет.</p>
@@ -1376,7 +1380,8 @@ async function voiceSearch(){
 $('qmic').hidden=!canRec; $('qmic').onclick=voiceSearch;
 $('q').addEventListener('input',()=>{$('qst').hidden=true});
 // ползунок времени: не чаще кадра экрана и без полной перерисовки страницы
-$('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}};
+$('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}
+  else if(e.target.id=='starLim'){starLim=+e.target.value; try{localStorage.setItem('starLim',starLim)}catch{} mapRedraw()}};
 render();
 
 // ---------- Фон: звёзды летят навстречу из центра экрана ----------
