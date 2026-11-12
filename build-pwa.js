@@ -30,7 +30,7 @@ const verJs = `window.APP_VERSION=${JSON.stringify(VERSION)};
 fs.writeFileSync(path.join(__dirname, 'version.js'), verJs); write('version.js', verJs);
 
 write('manifest.webmanifest', JSON.stringify({
-  name: 'Темная ночь', short_name: 'Темная ночь', lang: 'ru', start_url: './', scope: './', display: 'standalone',
+  name: 'Тёмная ночь', short_name: 'Тёмная ночь', lang: 'ru', start_url: './', scope: './', display: 'standalone',
   background_color: BG, theme_color: BG,
   icons: [192, 512].map(s => ({ src: `icon-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable' })),
 }, null, 1));

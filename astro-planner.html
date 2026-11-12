@@ -1,4 +1,4 @@
-<title>Темная ночь</title>
+<title>Тёмная ночь</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: одна колонка — пульт сверху, полоса ночи, под ней список карточек выбранной вкладки. Только тёмная тема: страницей пользуются ночью у телескопа. */
@@ -175,7 +175,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
 <main>
   <header>
     <div>
-    <h1>Темная ночь</h1>
+    <h1>Тёмная ночь</h1>
     <p class="sub">Объекты дальнего космоса, которые лучше всего снимать и наблюдать в выбранную ночь.</p>
     </div>
     <div class="hbtns">
@@ -1549,7 +1549,7 @@ $('listShare').onclick=async()=>{const L=listOf(mode), b=$('listShare'); if(!L.i
   const text=`Список «${L.name}» (${L.kind=='photo'?'астрофото':'визуал'}), ${$('setupSum').textContent}:
 ${lines.join('\n')}
 
-Открыть список в приложении «Темная ночь»: ${link}`;
+Открыть список в приложении «Тёмная ночь»: ${link}`;
   try{if(navigator.share){await navigator.share({title:'Список «'+L.name+'»',text});return}}catch(e){if(e.name=='AbortError')return}
   try{await navigator.clipboard.writeText(text); b.textContent='Скопировано'}catch{b.textContent='Не удалось'}
   setTimeout(()=>b.textContent='Поделиться',2500)};
