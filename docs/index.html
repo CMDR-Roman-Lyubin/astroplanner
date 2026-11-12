@@ -1341,7 +1341,8 @@ const TYC_BANDS=Array.from({length:90},(_,b)=>Math.max(1,Math.ceil(360*Math.cos(
 {let T=0; for(const n of TYC_BANDS){TYC_FIRST.push(T); T+=n} TYC_FIRST.push(T)}
 let TYC=null, tycState=''; // '' — не загружали, load, ok, err
 function loadTyc(){if(tycState) return; tycState='load';
-  fetch('tyc2.bin').then(r=>{if(!r.ok) throw 0; return r.arrayBuffer()}).then(b=>{const v=new DataView(b), T=v.getUint32(4,true);
+  // claude.ai двоичные файлы рядом со страницей не раздаёт — там берём копию с GitHub Pages
+  fetch(window.claude?'https://cmdr-roman-lyubin.github.io/astroplanner/tyc2.bin':'tyc2.bin').then(r=>{if(!r.ok) throw 0; return r.arrayBuffer()}).then(b=>{const v=new DataView(b), T=v.getUint32(4,true);
     if(v.getUint32(0,true)!=0x32435954||T!=TYC_FIRST.at(-1)) throw 0; // 'TYC2' и та же разбивка на участки
     TYC={off:new Uint32Array(b,8,T+1),s:new Uint32Array(b,8+4*(T+1))}; tycState='ok'; mapRedraw()})
   .catch(()=>{tycState='err'; mapRedraw(); setTimeout(()=>{tycState=''},3e4)})} // без сети — новая попытка не раньше чем через 30 с
