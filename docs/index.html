@@ -46,10 +46,12 @@ input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--acce
 .tabs{overflow-x:auto}
 .tabs button{white-space:nowrap;padding:8px 9px}
 /* настройки сворачиваются: на телефоне первым экраном должны быть поиск и список, а не форма */
-#setup{background:none;border:0;border-radius:0}
-#setup>summary{display:list-item;list-style:inside disclosure-closed;padding:4px 0;color:var(--accent)}
-#setup[open]>summary{list-style-type:disclosure-open;margin-bottom:10px}
-#setup>summary::-webkit-details-marker{display:revert}
+/* настройки — отдельная панель за шестерёнкой; строка «место · дата» над ней тоже её открывает */
+#setup{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:12px}
+#setupDone{width:100%}
+.grp{grid-column:1/-1;margin:6px 0 0;font-size:13px;font-weight:600;color:var(--accent)}
+.where{font:inherit;color:var(--accent);background:none;border:0;padding:4px 0;text-align:left;cursor:pointer}
+.hbtns #gear{font-size:15px;line-height:1;padding:3px 9px}
 .list h2{font-size:15px;font-weight:600;margin:10px 0 0}
 .log label{flex:1 1 150px}
 .log input,.log select{background:var(--bg)}
@@ -118,6 +120,10 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 #map svg{display:block;width:100%;max-width:560px;margin:0 auto;touch-action:manipulation}
 #map label{flex-direction:row;align-items:center;gap:8px;font-size:13px;margin:8px 0}
 #map input[type=range]{padding:0;border:0;background:none;accent-color:var(--accent)}
+.qrow{display:flex;gap:6px}
+.qrow input{flex:1}
+#qmic{flex:none;font-size:18px;line-height:1;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:0 12px;cursor:pointer}
+#qmic[aria-pressed=true]{background:#b3261e;border-color:#b3261e}
 button.more{font:inherit;color:var(--accent);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;cursor:pointer}
 #map ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}
 #catList{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:0 8px}
@@ -138,6 +144,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <div class="hbtns">
       <button type="button" id="red" aria-pressed="false" title="Ночной режим: весь экран в оттенках красного, чтобы не сбивать ночное зрение">Красный</button>
       <button type="button" id="fly" aria-pressed="false" title="Анимация фона. У телескопа лучше выключить, чтобы не сбивать ночное зрение">Полёт</button>
+      <button type="button" id="gear" aria-pressed="false" aria-controls="setup" aria-label="Настройки" title="Настройки">⚙</button>
     </div>
   </header>
 
@@ -146,14 +153,17 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <button role="tab" id="mode-visual" aria-selected="false">Визуал</button>
   </div>
 
-  <details id="setup"><summary id="setupSum">Место, дата и оборудование</summary>
+  <button type="button" class="where" id="setupSum" aria-controls="setup">Место и дата</button>
+  <section id="setup" hidden aria-label="Настройки">
   <form id="f">
+    <h3 class="grp">Место и дата</h3>
     <label>Город<select id="city"></select></label>
     <label>Широта, °<input id="lat" type="number" step="0.01" min="-90" max="90"></label>
     <label>Долгота, °<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
     <label>Вечер даты<span class="datebox"><span></span><input id="date" type="date"></span></label>
     <label>Засветка (Бортль)<select id="bortle"></select></label>
-    <label data-mode="photo">Смарт-телескоп<select id="scope">
+    <h3 class="grp">Астрофото</h3>
+    <label>Смарт-телескоп<select id="scope">
       <option value="">свой сетап</option>
       <option value="250|5.6x3.2">ZWO Seestar S50</option>
       <option value="150|5.6x3.2">ZWO Seestar S30</option>
@@ -165,8 +175,8 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="250|7x7">Vaonis Vespera Pro</option>
       <option value="335|7.4x5">Celestron Origin</option>
     </select></label>
-    <label data-mode="photo">Фокусное для съёмки, мм<input id="focal" type="number" min="1" step="1" placeholder="не задано"></label>
-    <label data-mode="photo">Сенсор<select id="sensor">
+    <label>Фокусное для съёмки, мм<input id="focal" type="number" min="1" step="1" placeholder="не задано"></label>
+    <label>Сенсор<select id="sensor">
       <option value="">не задан</option>
       <option value="36x24">Полный кадр 36×24</option>
       <option value="23.5x15.6">APS-C 23,5×15,6</option>
@@ -180,12 +190,14 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="7x7">IMX676 7,0×7,0</option>
       <option value="5.6x3.2">IMX462/662 5,6×3,2</option>
     </select></label>
-    <label data-mode="visual">Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
-    <label data-mode="visual">Фильтр OIII<input id="oiii" type="checkbox"></label>
-    <label data-mode="visual">Расшифровка голоса<select id="asr">
+    <h3 class="grp">Визуал</h3>
+    <label>Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
+    <label>Фильтр OIII<input id="oiii" type="checkbox"></label>
+    <label>Расшифровка голоса<select id="asr">
       <option value="fast">Быстрая (модель ≈80 МБ)</option>
       <option value="best">Точная (модель ≈250 МБ)</option>
     </select></label>
+    <h3 class="grp">Рекомендации</h3>
     <label>Скрывать снятое и просмотренное<input id="hideDone" type="checkbox"></label>
     <fieldset class="catsel" id="catsel" hidden><legend id="catLegend">Каталоги в рекомендациях</legend>
       <div id="catList"></div>
@@ -197,7 +209,9 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       </div>
       <p class="sub">Поиск, план и журнал работают по всем каталогам. Только северное небо — склонение от −30°.</p>
     </fieldset>
-  </form></details>
+  </form>
+  <button type="button" class="more" id="setupDone">Готово</button>
+  </section>
 
   <section aria-label="Ход ночи">
     <div class="bar" id="bar"></div>
@@ -220,7 +234,11 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <button type="button" id="listDel">Удалить список</button>
     </div>
   </div>
-  <input id="q" type="search" placeholder="Поиск объекта: M31, Вуаль, NGC 7000…" aria-label="Поиск объекта">
+  <div class="qrow" id="qrow">
+    <input id="q" type="search" placeholder="Поиск объекта: M31, Вуаль, NGC 7000…" aria-label="Поиск объекта">
+    <button type="button" id="qmic" aria-pressed="false" aria-label="Голосовой поиск" title="Голосовой поиск: нажмите, назовите объект, нажмите ещё раз" hidden>🎤</button>
+  </div>
+  <p class="sub" id="qst" role="status" hidden></p>
   <div class="cats" id="cats" role="group" aria-label="Типы объектов"></div>
   <div class="magrange" id="magBox" hidden>
     <span id="magTxt"></span>
@@ -1016,7 +1034,7 @@ function render(){
   for(const b of $('catList').querySelectorAll('input')) b.checked=catSets[mode].has(b.value);
   const lo=+$('magMin').value, hi=+$('magMax').value;
   $('magBox').hidden=mode!='visual'||tab!='rec'; $('magTxt').textContent=magTxt(lo,hi);
-  $('cats').hidden=tab!='rec'; $('q').hidden=tab=='map'; $('listBar').hidden=tab!='plan'&&tab!='map';
+  $('cats').hidden=tab!='rec'; $('qrow').hidden=tab=='map'; if(tab=='map') $('qst').hidden=true; $('listBar').hidden=tab!='plan'&&tab!='map';
   $('list').hidden=tab=='map'; $('map').hidden=tab!='map';
   const L=listOf(mode);
   $('lists').innerHTML=lists.filter(l=>l.kind==mode).map(l=>`<button type="button" data-list="${l.id}" aria-pressed="${l==L}">${esc(l.name)} <small>${l.ids.length}</small></button>`).join('');
@@ -1024,7 +1042,7 @@ function render(){
   $('listDel').disabled=lists.filter(l=>l.kind==mode).length<2;
   const city=CITIES[$('city').value];
   $('date').previousElementSibling.textContent=fmtDate(date);
-  $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
+  $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · изменить`;
   const tf=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',timeZone:city?.tz}), hm=t=>tf.format(t);
   const n=night(lat,lon,date);
 
@@ -1108,7 +1126,9 @@ $('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal
 $('sensor').onchange=$('focal').oninput=()=>{syncScope();render()};
 syncScope();
 $('f').onsubmit=e=>e.preventDefault();
-$('setup').open=!!window.matchMedia?.('(min-width:700px)').matches; // на широком экране форма сразу раскрыта
+const showSetup=open=>{$('setup').hidden=!open; $('gear').setAttribute('aria-pressed',open); if(open) $('setup').scrollIntoView({block:'start',behavior:'smooth'})};
+$('gear').onclick=$('setupSum').onclick=()=>showSetup($('setup').hidden);
+$('setupDone').onclick=()=>{showSetup(false); window.scrollTo({top:0,behavior:'smooth'})};
 // Отметки и заметки правят карточку на месте, без перерисовки списка: иначе раскрытая карточка схлопнется, а поле потеряет фокус
 function logChanged(card){const id=card.dataset.id, e=log[id];
   if(e.visual?.audio&&!e.visual.audio.length) delete e.visual.audio;
@@ -1165,6 +1185,53 @@ $('listNew').onclick=()=>{const l={id:newId(),name:'Список '+(lists.filter
 $('listDel').onclick=()=>{const b=$('listDel');
   if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?'; setTimeout(()=>b.textContent='Удалить список',3000); return}
   b.textContent='Удалить список'; const L=listOf(mode); lists=lists.filter(l=>l!=L); curList[mode]=null; saveLocal(); pushCloud(); render()};
+// ---------- Голосовой поиск: короткая запись → та же модель Whisper → текст в поле поиска ----------
+// Номера каталогов, сказанные словами («эм тридцать один», «эн-джи-си семь тысяч»), приводим к виду «M31», «NGC 7000»
+function voiceQuery(t){
+  let s=' '+t.toLowerCase().replace(/[.,!?;:«»"()]/g,' ').replace(/ё/g,'е')+' ';
+  const R_=String.raw, sp=R_`(?:\s|-)*`, num=R_`(\d+)`;
+  for(const [re,out] of [
+    [R_`(месс?ье|месс?и\S*|мисс?и\S*|messier|эм|м|m)${sp}${num}`,'M'], // «Мессье» модель слышит и как «Миссия», «Месси»
+    [R_`(эн${sp}джи${sp}си|энджиси|нгц|ngc|н${sp}г${sp}с|эн${sp}джи${sp}эс)${sp}${num}`,'NGC '],
+    [R_`(ай${sp}си|айси|ic|ис)${sp}${num}`,'IC '],
+    [R_`(колдуэлл\S*|колдвелл\S*|caldwell)${sp}${num}`,'C '],
+    [R_`(шарплес\S*|sh)${sp}2?${sp}${num}`,'Sh2-'],
+    [R_`(барнард\S*|barnard)${sp}${num}`,'B '],
+    [R_`(арп|arp)${sp}${num}`,'Arp '],
+    [R_`(мелотт\S*)${sp}${num}`,'Mel '],
+    [R_`(коллиндер\S*)${sp}${num}`,'Cr ']]){
+    const m=s.match(new RegExp(R_`(?:^|\s)`+re+R_`(?=\s)`));
+    if(m) return out+m[m.length-1]}
+  // название: ищем по основе слов («андромеда» → «андромед»), берём слово, которое находит меньше всего объектов, но не ноль
+  const words=s.split(/\s+/).filter(w=>w.length>2&&!/^(туманност|галактик|скоплени|звезд|найди|покажи|объект)/.test(w));
+  let best=null,bn=1e9;
+  for(const w of words){const st=norm(w.length>5?w.slice(0,-2):w), k=CATALOG.filter(o=>o.key.includes(st)).length; if(k&&k<bn){bn=k;best=st}}
+  return best||t.trim();
+}
+let qRec=null;
+async function voiceSearch(){
+  const btn=$('qmic'), st=$('qst'); st.hidden=false;
+  if(qRec){qRec.stop();return}
+  let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
+  catch{st.textContent='Нет доступа к микрофону. Разрешите его для приложения в настройках Android.';return}
+  const mr=new MediaRecorder(stream), chunks=[]; qRec=mr;
+  const auto=setTimeout(()=>mr.state=='recording'&&mr.stop(),7000); // на название объекта хватает нескольких секунд
+  mr.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  mr.onstop=async()=>{clearTimeout(auto); stream.getTracks().forEach(t=>t.stop()); qRec=null; btn.setAttribute('aria-pressed',false);
+    const key=$('asr').value in ASR_MODELS?$('asr').value:'fast', files={};
+    try{st.textContent='Распознаю…';
+      const text=await asrRun(await to16k(new Blob(chunks,{type:mr.mimeType||'audio/webm'})),ASR_MODELS[key],d=>{
+        if(d.stage=='run'){st.textContent='Распознаю…';return}
+        files[d.file]=d; const v=Object.values(files), p=v.reduce((a,x)=>a+x.loaded,0)/v.reduce((a,x)=>a+x.total,0);
+        st.textContent=`Скачиваю модель распознавания: ${Math.round(p*100)}% — только в первый раз.`});
+      if(!text){st.textContent='Не расслышал — попробуйте ещё раз.';return}
+      const q=voiceQuery(text); $('q').value=q; tab=tab=='map'?'rec':tab; render();
+      st.textContent=`Услышал: «${text}» → ищу «${q}».`;
+    }catch(e){st.textContent=navigator.onLine?'Не удалось распознать: '+e.message:'Модель распознавания ещё не скачана. Подключитесь к интернету один раз.'}};
+  mr.start(); btn.setAttribute('aria-pressed',true); st.textContent='Говорите… нажмите 🎤 ещё раз, когда закончите.';
+}
+$('qmic').hidden=!canRec; $('qmic').onclick=voiceSearch;
+$('q').addEventListener('input',()=>{$('qst').hidden=true});
 // не чаще кадра экрана и без полной перерисовки страницы
 $('map').oninput=e=>{if(e.target.id!='mapT'||!mapArgs)return; mapIdx=+e.target.value;
   if(!mapRaf) mapRaf=requestAnimationFrame(()=>{mapRaf=0; drawMap(...mapArgs)})};
@@ -1221,5 +1288,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 16 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 17 от 12.11.2026";v.hidden=false}</script>
 </body></html>
