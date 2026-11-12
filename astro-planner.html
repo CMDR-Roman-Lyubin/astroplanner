@@ -89,6 +89,9 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .ref figcaption{margin-top:4px;font-size:12px;color:var(--muted)}
 .chart .frame svg{display:block;width:100%;max-width:360px;height:auto;aspect-ratio:1;background:#000;border-radius:6px} /* .chart svg задаёт 90px для графика высоты — здесь квадрат */
 .warn{color:#ff9f6b}
+.ref .rot{flex-direction:row;align-items:center;gap:8px;margin-top:6px;font-size:13px;max-width:360px}
+.ref .rot input{flex:1;padding:0;border:0;background:none;accent-color:#7fd3ff}
+.ref .rot output{min-width:2.5em;color:var(--fg);font-variant-numeric:tabular-nums}
 .audios{flex-basis:100%;display:flex;flex-direction:column;gap:6px}
 .audios .aud{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .audios audio{flex:1 1 100%;min-width:0;height:36px} /* плеер на всю ширину, кнопки записи — строкой под ним */
@@ -914,18 +917,25 @@ function fitTip(o,fov,fill){const f=Math.round(+$('focal').value||0), p=Math.rou
 // Кадр — без поворота камеры: длинная сторона по линии восток–запад. Если кадр больше снимка, поле расширяется чёрным
 function tangent(o,ra,dec){const d=(ra-o.ra)*R, c=sin(o.dec)*sin(dec)+cos(o.dec)*cos(dec)*Math.cos(d);
   return [cos(dec)*Math.sin(d)/c/R, (cos(o.dec)*sin(dec)-sin(o.dec)*cos(dec)*Math.cos(d))/c/R]}
+// Поворот кадра (общий для всех карточек, запоминается): 0° — длинная сторона по линии восток–запад, дальше — против часовой стрелки на небе
+let camRot=0; try{camRot=+localStorage.getItem('camRot')||0}catch{}
+// углы кадра на снимке при повороте rot; geo — геометрия снимка (см. frameOverlay)
+function framePts(g,rot){const c=Math.cos(rot*R), s=Math.sin(rot*R);
+  return [[g.w,g.h],[-g.w,g.h],[-g.w,-g.h],[g.w,-g.h]].map(([x,y])=>{let X=x*c-y*s-g.TL[0], Y=x*s+y*c-g.TL[1];
+    return [(X*g.V[1]-Y*g.V[0])/g.det*100,(g.U[0]*Y-g.U[1]*X)/g.det*g.H]})}
 function frameOverlay(o,fov,fill,url,TL,TR,BL,cap){
   const U=[TR[0]-TL[0],TR[1]-TL[1]], V=[BL[0]-TL[0],BL[1]-TL[1]], det=U[0]*V[1]-U[1]*V[0];
   const asp=Math.hypot(...V)/Math.hypot(...U), H=100*asp;
-  // точка неба (ξ,η) → координаты на снимке (x 0..100, y 0..H)
-  const uv=([x,y])=>{x-=TL[0]; y-=TL[1]; return [(x*V[1]-y*V[0])/det*100,(U[0]*y-U[1]*x)/det*H]};
-  const w=fov[0]/120, h=fov[1]/120, pts=[[w,h],[-w,h],[-w,-h],[w,-h]].map(uv);
-  const xs=[0,100,...pts.map(p=>p[0])], ys=[0,H,...pts.map(p=>p[1])], pad=3;
+  const g={TL,U,V,det,H,w:fov[0]/120,h:fov[1]/120}, pts=framePts(g,camRot);
+  // поле — с запасом под любой поворот рамки: углы при 0…165° через 15°
+  const all=Array.from({length:12},(_,i)=>framePts(g,i*15)).flat();
+  const xs=[0,100,...all.map(p=>p[0])], ys=[0,H,...all.map(p=>p[1])], pad=3;
   const x0=Math.min(...xs)-pad, y0=Math.min(...ys)-pad, vw=Math.max(...xs)+pad-x0, vh=Math.max(...ys)+pad-y0;
   return `<figure class="ref frame"><svg viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" style="aspect-ratio:${(vw/vh).toFixed(3)}" role="img" aria-label="Снимок объекта с рамкой вашего кадра">
     <image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"/>
-    <polygon points="${pts.map(p=>p.map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="none" stroke="#7fd3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
-    <figcaption>${cap} · голубая рамка — ваш кадр ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}°: ${fitTip(o,fov,fill)}. Камеру можно повернуть — рамка показана длинной стороной по линии восток–запад.</figcaption></figure>`}
+    <polygon data-geo='${JSON.stringify(g)}' points="${pts.map(p=>p.map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="none" stroke="#7fd3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    <label class="rot">Поворот кадра<input type="range" data-act="rot" min="0" max="179" step="1" value="${camRot}" aria-label="Поворот кадра на небе"><output>${camRot}°</output></label>
+    <figcaption>${cap} · голубая рамка — ваш кадр ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}°: ${fitTip(o,fov,fill)}. Поворот 0° — длинная сторона по линии восток–запад; у смарт-телескопов на альт-азимутальной монтировке кадр за ночь поворачивается сам.</figcaption></figure>`}
 // схема: снимок DSS в масштабе, рамка кадра (камера без поворота, длинная сторона по горизонтали) и контур объекта.
 // Поле схемы — чуть больше и кадра, и объекта; север сверху, восток слева. Нужна там, где у снимка нет координат (Википедия)
 function frameHtml(o,fov,fill){
@@ -1395,7 +1405,13 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
     if(act=='done'){const d=box.querySelector('[data-act=date]'); if(d){d.value=r.done||''; d.previousElementSibling.textContent=fmtDate(d.value)}}
     b.setAttribute('aria-pressed',!!r[act])}
   logChanged(card)};
-$('list').oninput=ev=>{const t=ev.target, act=t.dataset.act; if(!['exp','gear','note','sessions','date','rating'].includes(act))return;
+$('list').oninput=ev=>{const t=ev.target, act=t.dataset.act;
+  // поворот кадра — сразу во всех открытых карточках, без перерисовки
+  if(act=='rot'){camRot=+t.value; try{localStorage.setItem('camRot',camRot)}catch{}
+    for(const p of $('list').querySelectorAll('polygon[data-geo]')) p.setAttribute('points',framePts(JSON.parse(p.dataset.geo),camRot).map(q=>q.map(v=>v.toFixed(2)).join(',')).join(' '));
+    for(const r of $('list').querySelectorAll('[data-act=rot]')){r.value=camRot; r.nextElementSibling.textContent=camRot+'°'}
+    return}
+  if(!['exp','gear','note','sessions','date','rating'].includes(act))return;
   const card=t.closest('details'), box=t.closest('.log');
   if(act=='rating'){const v=+t.value, kind=box.dataset.kind, e=rec(card.dataset.id,kind); e.rating=v||undefined;
     t.nextElementSibling.textContent=v?fmtR(v)+' из 10':'нет';
