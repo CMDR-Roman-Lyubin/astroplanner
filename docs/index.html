@@ -10,6 +10,7 @@
   color-scheme:dark;
   --bg:#0c111d; --surface:#141b2c; --line:#26304a; --fg:#dde2ee; --muted:#8a93ab;
   --accent:#e9b65c; --moon:#c5d0ef;
+  --card:rgba(20,27,44,.86);
   --day:#6f8fc4; --civil:#4a6296; --naut:#2f3f6b; --astro:#1c2747; --night:#070a13;
   --font:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
   --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
@@ -61,12 +62,25 @@ summary::-webkit-details-marker{display:none}
 .chart svg{display:block;width:100%;height:90px}
 .chart p{margin:4px 0 0;font-size:12px;color:var(--muted)}
 .empty{color:var(--muted);padding:16px 0}
+/* фон «полёт среди звёзд»: холст под содержимым; карточки слегка прозрачные, чтобы звёзды угадывались сквозь них */
+#stars{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 60% 45% at 50% 50%,rgba(70,60,140,.22),transparent 70%),
+    radial-gradient(ellipse 40% 30% at 30% 65%,rgba(40,90,140,.14),transparent 70%)} /* туманность, к которой летим */
+main{position:relative;z-index:1}
+details{background:var(--card)}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+#fly{flex:none;font:inherit;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
+#fly[aria-pressed=true]{color:var(--fg);border-color:var(--accent)}
 </style>
+<canvas id="stars" aria-hidden="true"></canvas>
 
 <main>
   <header>
+    <div>
     <h1>Небо на ночь</h1>
     <p class="sub">Объекты дальнего космоса, которые лучше всего снимать и наблюдать в выбранную ночь.</p>
+    </div>
+    <button type="button" id="fly" aria-pressed="false" title="Анимация фона. У телескопа лучше выключить, чтобы не сбивать ночное зрение">Полёт</button>
   </header>
 
   <details id="setup"><summary id="setupSum">Место, дата и оборудование</summary>
@@ -707,6 +721,43 @@ $('list').onchange=async ev=>{const t=ev.target; if(t.dataset.act!='img'||!t.fil
 for(const t of TABS) $('tab-'+t).onclick=()=>{tab=t;
   for(const u of TABS) $('tab-'+u).setAttribute('aria-selected',u==t); render()};
 render();
+
+// ---------- Фон: звёзды летят навстречу из центра экрана ----------
+// Яркость не выше ~60%, ~30 кадров/с и пауза в фоновой вкладке — ради батареи и ночного зрения.
+// Без анимации (кнопка или системная настройка «уменьшить движение») рисуется неподвижное звёздное небо.
+(()=>{
+  const cv=$('stars'), c=cv.getContext('2d'), COUNT=320, SPEED=.18, TRAIL=.35; // SPEED — доля пути за секунду, TRAIL — длина следа в секундах полёта
+  let w=0,h=0,stars=[],raf=0,last=0;
+  const tint=()=>{const r=Math.random();return r<.12?'255,214,170':r<.3?'190,210,255':'235,240,255'}; // немного тёплых и голубых
+  const spawn=(s={},z)=>Object.assign(s,{x:(Math.random()-.5)*2,y:(Math.random()-.5)*2,z:z??1,col:tint(),m:Math.random()});
+  const proj=(s,z)=>[w/2+s.x/z*w/2, h/2+s.y/z*h/2];
+  function size(){const d=Math.min(devicePixelRatio||1,2); w=innerWidth; h=innerHeight;
+    cv.width=w*d; cv.height=h*d; c.setTransform(d,0,0,d,0,0); draw(0)}
+  function draw(dt){
+    c.clearRect(0,0,w,h);
+    for(const s of stars){
+      s.z-=SPEED*dt;
+      const [x,y]=proj(s,Math.max(s.z,.02));
+      if(s.z<=.02||x<-20||x>w+20||y<-20||y>h+20){spawn(s);continue}
+      const k=1-s.z, a=Math.min(.8,.1+k*.9)*(.55+.45*s.m), r=.3+k*1.4;
+      c.fillStyle=`rgba(${s.col},${a.toFixed(3)})`;
+      if(dt){ // след: от «где звезда была долю секунды назад» к ней, тающий к хвосту
+        const [px,py]=proj(s,Math.min(s.z+SPEED*TRAIL,1)), g=c.createLinearGradient(px,py,x,y);
+        g.addColorStop(0,`rgba(${s.col},0)`); g.addColorStop(1,`rgba(${s.col},${a.toFixed(3)})`);
+        c.strokeStyle=g; c.lineWidth=r*1.3; c.beginPath(); c.moveTo(px,py); c.lineTo(x,y); c.stroke()}
+      c.beginPath(); c.arc(x,y,r,0,7); c.fill()
+    }
+  }
+  function frame(t){raf=requestAnimationFrame(frame); const dt=(t-last)/1000; if(dt<.03)return; last=t; draw(Math.min(dt,.1))}
+  function set(on){$('fly').setAttribute('aria-pressed',on); cancelAnimationFrame(raf); raf=0;
+    if(on){last=performance.now(); raf=requestAnimationFrame(frame)} else draw(0);
+    try{localStorage.setItem('fly',on?'1':'0')}catch{}}
+  stars=Array.from({length:COUNT},()=>spawn({},Math.random()*.95+.05));
+  addEventListener('resize',size); size();
+  let pref=null; try{pref=localStorage.getItem('fly')}catch{}
+  set(pref?pref=='1':!matchMedia('(prefers-reduced-motion: reduce)').matches);
+  $('fly').onclick=()=>set($('fly').getAttribute('aria-pressed')!='true');
+})();
 // Офлайн-режим установленного приложения. В артефакте и в файле, открытом с диска, сервис-воркеры недоступны
 if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
