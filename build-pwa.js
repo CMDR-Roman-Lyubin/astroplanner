@@ -22,6 +22,9 @@ ${fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8')}
 <script>{const v=document.getElementById('ver');v.textContent=${JSON.stringify(VERSION)};v.hidden=false}</script>
 </body></html>`);
 
+// дополнительные каталоги — отдельным файлом рядом со страницей (его собирает gen-catalogs.js)
+fs.copyFileSync(path.join(__dirname, 'catalog-extra.js'), path.join(out, 'catalog-extra.js'));
+
 write('manifest.webmanifest', JSON.stringify({
   name: 'Небо на ночь', short_name: 'Небо', lang: 'ru', start_url: './', scope: './', display: 'standalone',
   background_color: BG, theme_color: BG,
@@ -30,7 +33,7 @@ write('manifest.webmanifest', JSON.stringify({
 
 // Сначала кэш (в поле сеть либо отсутствует, либо «висит»), обновление подтягивается в фоне и видно при следующем запуске
 write('sw.js', `const CACHE='sky-v1';
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','manifest.webmanifest','icon-192.png','icon-512.png'])));self.skipWaiting()});
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','catalog-extra.js','manifest.webmanifest','icon-192.png','icon-512.png'])));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);

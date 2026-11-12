@@ -88,6 +88,14 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .audios .aud{display:flex;align-items:center;gap:6px}
 .audios audio{flex:1;min-width:0;height:36px}
 .log button[data-act=rec][aria-pressed=true]{color:#fff;background:#b3261e;border-color:#b3261e}
+.catsel{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;margin:0;padding:6px 10px 10px;min-width:0}
+.catsel legend{font-size:12px;color:var(--muted);padding:0 4px}
+#catList{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:0 8px}
+#catList label{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
+#catList label small{color:var(--muted)}
+#catList input{margin:4px 0;flex:none}
+.catbtns{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
+.catbtns button{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
 </style>
 <canvas id="stars" aria-hidden="true"></canvas>
 
@@ -140,6 +148,16 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
     <label>Апертура для визуала, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
     <label>Фильтр OIII для визуала<input id="oiii" type="checkbox"></label>
     <label>Скрывать снятое и просмотренное<input id="hideDone" type="checkbox"></label>
+    <fieldset class="catsel" id="catsel" hidden><legend>Каталоги в рекомендациях</legend>
+      <div id="catList"></div>
+      <div class="catbtns" id="catBtns">
+        <button type="button" data-preset="std">Стандартный</button>
+        <button type="button" data-preset="dob">Для 12″ добсона</button>
+        <button type="button" data-preset="all">Все</button>
+        <button type="button" data-preset="none">Снять все</button>
+      </div>
+      <p class="sub">Поиск, план и журнал работают по всем каталогам. Только северное небо — склонение от −30°.</p>
+    </fieldset>
   </form></details>
 
   <section aria-label="Ход ночи">
@@ -163,6 +181,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
   <p class="sub" id="ver" hidden></p><!-- номер версии вписывает build-pwa.js; на claude.ai строки нет -->
 </main>
 
+<script src="catalog-extra.js"></script><!-- дополнительные каталоги; без файла работает основной список -->
 <script>
 // ---------- Каталог: id;название;тип;созвездие;RA ч;Dec °;блеск;размер a';b' ----------
 // Координаты J2000, записаны по памяти с точностью ~0,5° — для планирования хватает, для наведения нет.
@@ -387,12 +406,20 @@ Mel 111;Скопление Волос Вероники;OC;Com;12.42;26;1.8;275
 Mel 25;Гиады;OC;Tau;4.45;15.87;0.5;330
 `.trim().split('\n').map(l=>{const [id,name,type,con,ra,dec,mag,a,b]=l.split(';');
   return {id,name,type,con,ra:ra*15,dec:+dec,mag:+mag,a:+a,b:+(b||a)}});
+// Дополнительные каталоги из catalog-extra.js. base — объект основного списка, cats — битовая маска каталогов (порядок CAT_LIST),
+// alias — другие обозначения через запятую, est — блеск не из каталога, а оценка по типу
+const HAS_EXTRA=typeof CAT_LIST!='undefined';
+for(const o of CATALOG){const [m,alias]=(HAS_EXTRA&&CAT_BASE[o.id]||'0;').split(';'); Object.assign(o,{base:true,cats:parseInt(m,36),alias})}
+if(HAS_EXTRA) for(const l of CAT_EXTRA.trim().split('\n')){const [id,name,type,ra,dec,mag,a,b,m,alias]=l.split(';');
+  CATALOG.push({id,name,type,con:'',ra:ra*15,dec:+dec,mag:+mag.replace('~',''),est:mag[0]=='~',a:+a,b:+b,cats:parseInt(m,36),alias})}
+const norm=s=>s.toLowerCase().replace(/\s+/g,'');
+for(const o of CATALOG){o.keys=[o.id,...o.alias.split(',').filter(Boolean)].map(norm); o.key=o.keys.join('|')+'|'+norm(o.name)}
 
 const TYPES={G:'галактика',EN:'эмиссионная туманность',RN:'отражательная туманность',SNR:'остаток сверхновой',
-  PN:'планетарная туманность',OC:'рассеянное скопление',GC:'шаровое скопление'};
+  PN:'планетарная туманность',OC:'рассеянное скопление',GC:'шаровое скопление',DN:'тёмная туманность',GG:'группа или скопление галактик'};
 // Насколько Луна портит съёмку: эмиссионные объекты спасает узкополосный фильтр, галактики и пыль — нет.
-const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5};
-const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45};
+const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5,DN:1,GG:1};
+const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45,DN:.8,GG:.8};
 const SKY=[0,22,21.9,21.6,21,20.2,19.3,18.6,18,17.5]; // яркость неба по Бортлю, mag/arcsec²
 const PHOTO_ALT=25, VISUAL_ALT=20; // 25°, а не 30°: иначе с широты Москвы выпадает M42
 
@@ -486,11 +513,13 @@ function night(lat,lon,dateStr){
   return {lat,s,dark,lim,moon:moonPos(mid),illum:moonIllum(mid)};
 }
 function stats(o,n,minAlt){
-  let k=0,max=-90,tMax=0,from=0,to=0,moonUp=0;
-  for(const x of n.dark){const a=alt(n.lat,x.L,o);
-    if(a>max){max=a;tMax=x.t}
-    if(a>=minAlt){k++;from=from||x.t;to=x.t;if(x.moon>0)moonUp++}}
-  return {h:k*STEP/36e5,max,tMax,from,to,moonFrac:k?moonUp/k:0,moonSep:sep(o,n.moon)};
+  // та же формула, что alt(), но синус высоты сравниваем без asin и множители считаем один раз — каталог из 14 тыс. объектов
+  const A=sin(n.lat)*sin(o.dec), B=cos(n.lat)*cos(o.dec), lim=sin(minAlt);
+  let k=0,best=-2,tMax=0,from=0,to=0,moonUp=0;
+  for(const x of n.dark){const s=A+B*Math.cos((x.L-o.ra)*R);
+    if(s>best){best=s;tMax=x.t}
+    if(s>=lim){k++;from=from||x.t;to=x.t;if(x.moon>0)moonUp++}}
+  return {h:k*STEP/36e5,max:asin(best),tMax,from,to,moonFrac:k?moonUp/k:0,moonSep:sep(o,n.moon)};
 }
 const altTerm=max=>clamp((max-20)/50);
 // Лучшие месяцы для этой широты: где объект проводит выше minAlt в темноте не меньше 70% от своего максимума (по 15-м числам)
@@ -515,7 +544,8 @@ function photoScore(o,n,fov){const s=stats(o,n,PHOTO_ALT);
   const fit=fov?(fill<=.6?Math.sqrt(fill/.6):fill<=1?1-.5*(fill-.6):.8/fill):clamp(Math.log10(o.a)/Math.log10(180));
   const bright=.8+.2*clamp((18-surfB(o))/6); // тусклые объекты требуют больше выдержки
   // 100 = восемь часов высоко в темноте без Луны, объект в размер кадра и яркий. Корень — чтобы короткие летние ночи не обнуляли весь список
-  return {...s,fill,score:100*Math.sqrt(Math.min(s.h,8)/8)*(.6+.4*altTerm(s.max))*(1-.8*moon)*(.4+.6*fit*PHOTO_TYPE[o.type])*bright};
+  // блеск не из каталога, а оценка по типу (тусклые области HII, тёмные туманности) — не ставим такие выше проверенных
+  return {...s,fill,score:100*Math.sqrt(Math.min(s.h,8)/8)*(.6+.4*altTerm(s.max))*(1-.8*moon)*(.4+.6*fit*PHOTO_TYPE[o.type])*bright*(o.est?.8:1)};
 }
 const surfB=o=>o.mag+2.5*Math.log10(Math.PI/4*o.a*o.b); // средняя поверхностная яркость, mag/arcmin²
 // OIII затемняет фон на столько звёздных величин, почти не трогая объект. Туманности, светящие в основном в H-бета/H-альфа, на него не отзываются.
@@ -541,14 +571,14 @@ function visualScore(o,n,bortle,aperture,oiii){const s=stats(o,n,VISUAL_ALT);
 // (иначе порог видимости, посчитанный по всей площади, занижает M42, M31 и подобные). Список и числа — экспертная оценка.
 const SHOWPIECE={M42:4,M31:2.5,M8:2,M17:2,M81:1.5,M82:1.5,M51:1,M104:1.5,M64:1,M94:1.5,'NGC 253':1.5,'NGC 3372':3,'NGC 2070':3,LMC:2,SMC:2,
   M13:0,M45:0,M57:0,M27:0,M44:0,M22:0,M5:0,M3:0,M11:0,M7:0,M35:0,M37:0,'NGC 869/884':0,'NGC 5139':0,'NGC 104':0,'NGC 4755':0};
-const VIS_SMALL={OC:1,EN:.8,GC:.6,G:1,SNR:.6,RN:.6,PN:.8}; // галактикам вес не режем: слабые и так отсекает порог видимости
-const VIS_LARGE={OC:.7,EN:.9,GC:1,G:1,SNR:.9,RN:.8,PN:1};
+const VIS_SMALL={OC:1,EN:.8,GC:.6,G:1,SNR:.6,RN:.6,PN:.8,DN:.3,GG:.5}; // галактикам вес не режем: слабые и так отсекает порог видимости
+const VIS_LARGE={OC:.7,EN:.9,GC:1,G:1,SNR:.9,RN:.8,PN:1,DN:.4,GG:.8};
 
 // ---------- Интерфейс ----------
 const $=id=>document.getElementById(id);
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let tab='photo', cat='Все';
-const CATS={'Все':null,'Звёздные скопления':['OC','GC'],'Галактики':['G'],'Туманности':['EN','RN','SNR','PN']};
+const CATS={'Все':null,'Звёздные скопления':['OC','GC'],'Галактики':['G','GG'],'Туманности':['EN','RN','SNR','PN','DN']};
 const TABS=['photo','visual','plan','done'];
 
 // ---------- План и журнал: {id объекта: {photo:{plan, done:'ГГГГ-ММ-ДД', exp, gear, img}, visual:{plan, done, note}}} ----------
@@ -721,6 +751,25 @@ let saved={}; try{saved=JSON.parse(localStorage.getItem('sky')||'{}')}catch{}
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
 for(const id of ['focal','sensor','aperture']) $(id).value=saved[id]??'';
 $('oiii').checked=!!saved.oiii; $('hideDone').checked=!!saved.hideDone;
+// Выбор каталогов: base — основной список; по умолчанию только он
+const PRESETS={std:['base'],
+  // для поиска слабого в 12″: галактики и их группы, планетарные, тёмные и светлые туманности, звёздные скопления;
+  // без PGC/UGC/VV/LDN/LBN (тысячи объектов, почти всё повторяет NGC/IC или не видно глазом) и без южных каталогов
+  dob:['base','M','C','NGC','IC','B','Sh2','vdB','Cr','Mel','Arp','PK','ACO','HCG','Tr','St'],
+  all:['base',...(HAS_EXTRA?CAT_LIST.map(c=>c[0]):[])],none:[]};
+let catOn=new Set(saved.cats||PRESETS.std);
+const catMask=()=>HAS_EXTRA?CAT_LIST.reduce((m,c,i)=>catOn.has(c[0])?m|1<<i:m,0):0;
+const inCats=(o,mask)=>o.base&&catOn.has('base')||(o.cats&mask);
+if(HAS_EXTRA){$('catsel').hidden=false;
+  const count=i=>CATALOG.filter(o=>o.cats>>i&1).length;
+  $('catList').innerHTML=[['base','Основной список','217 объектов, которые выбирали вручную',CATALOG.filter(o=>o.base).length],
+    ...CAT_LIST.map((c,i)=>[c[0],c[0],c[1],count(i)])].filter(c=>c[3])
+    .map(([k,label,title,n])=>`<label title="${esc(title)}"><input type="checkbox" value="${esc(k)}">${esc(label)} <small>${n}</small></label>`).join('');
+  const syncCats=()=>{for(const b of $('catList').querySelectorAll('input')) b.checked=catOn.has(b.value)};
+  syncCats();
+  $('catList').onchange=e=>{catOn[e.target.checked?'add':'delete'](e.target.value); render()};
+  $('catBtns').onclick=e=>{const p=e.target.dataset?.preset; if(!p)return; catOn=new Set(PRESETS[p]); syncCats(); render()};
+}
 function fillCity(){const c=CITIES[$('city').value]; if(c){$('lat').value=c.lat;$('lon').value=c.lon}}
 if($('city').value>=0) fillCity(); else {$('lat').value=saved.lat??55.75;$('lon').value=saved.lon??37.62}
 
@@ -730,7 +779,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked}))}catch{}
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked,cats:[...catOn]}))}catch{}
   const city=CITIES[$('city').value];
   $('date').previousElementSibling.textContent=fmtDate(date);
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
@@ -758,13 +807,13 @@ function render(){
   const cards=kind=>{
   const minAlt=kind=='photo'?PHOTO_ALT:VISUAL_ALT;
   // поиск идёт по всему каталогу: без категории, без порога оценки, точное совпадение номера — первым
-  const norm=s=>s.toLowerCase().replace(/\s+/g,''), q=norm($('q').value), exact=o=>norm(o.id)==q;
+  const q=norm($('q').value), exact=o=>o.keys.includes(q), mask=catMask();
   // «Мой план» и «Журнал» показывают всё отмеченное, даже невидимое этой ночью, по порядку времени наилучшей высоты
   const order=r=>r.h?r.tMax:9e15;
   // «Скрывать снятое и просмотренное» убирает отмеченное только из рекомендаций: поиск, план и журнал показывают всё.
   // На вкладке «Фото» прячется снятое, на «Визуале» — просмотренное
   const hide=!mine&&!q&&$('hideDone').checked;
-  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?norm(o.id+o.name).includes(q):!CATS[cat]||CATS[cat].includes(o.type))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
+  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?o.key.includes(q):(mine||inCats(o,mask))&&(!CATS[cat]||CATS[cat].includes(o.type)))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
     .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)).slice(0,q?30:mine?999:15);
   return rows.length?rows.map(r=>{const o=r.o;
     const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
@@ -775,7 +824,7 @@ function render(){
     const e=log[o.id]?.[kind]||{};
     // нашли поиском один объект или точный номер — карточка сразу раскрыта, чтобы снимок был виден без лишнего нажатия
     return `<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o))?' open':''}><summary>
-      <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}, ${o.con}</small><small class="marks">${marks(o.id)}</small></span>
+      <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${marks(o.id)}</small></span>
       <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
       <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?` · ${r.fill>1?'не влезает: ':''}${Math.round(r.fill*100)}% кадра`:''}</span>
       <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)}</span>
@@ -787,7 +836,7 @@ function render(){
         <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
       </svg>
       <div class="ticks">${ticksHtml}</div>
-      <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°. Блеск ${o.mag}<sup>m</sup>, размер ${o.a}′${o.b!=o.a?'×'+o.b+'′':''}.</p>
+      <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°. ${o.est?'Блеск в каталоге не указан, оценка — по типу объекта':`Блеск ${o.mag}<sup>m</sup>`}, размер ${o.a}′${o.b!=o.a?'×'+o.b+'′':''}.${o.alias?` Другие обозначения: ${esc(o.alias.replace(/,/g,', '))}.`:''}</p>
       ${refImg(o,kind)}
     </div><div class="log" data-kind="${kind}">
       <button type="button" data-act="plan" aria-pressed="${!!e.plan}">В план</button>
@@ -894,5 +943,5 @@ render();
 if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 7 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 8 от 12.11.2026";v.hidden=false}</script>
 </body></html>
