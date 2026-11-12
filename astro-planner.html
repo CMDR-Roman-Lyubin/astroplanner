@@ -85,6 +85,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:12p
 html.red{--muted:#c2c8d6} /* после фильтра серые подписи иначе почти не видны */
 html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-blend-mode:multiply;pointer-events:none;z-index:2147483647}
 .ref{margin:10px 0 0}
+.ref img[src*="skyview"],image[href*="skyview"]{filter:contrast(1.15) brightness(.92)}
 .ref img{display:block;width:100%;max-width:360px;aspect-ratio:1;background:var(--night);border-radius:6px}
 .ref figcaption{margin-top:4px;font-size:12px;color:var(--muted)}
 .chart .frame svg{display:block;width:100%;max-width:360px;height:auto;aspect-ratio:1;background:#000;border-radius:6px} /* .chart svg задаёт 90px для графика высоты — здесь квадрат */
@@ -978,7 +979,7 @@ function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg){
   let under='';
   if(bg){const S=+clamp(Math.hypot(...fov)/60*1.15,.2,8).toFixed(2), s=S/2, uv=([x,y])=>{x-=TL[0]; y-=TL[1]; return [(x*V[1]-y*V[0])/det*100,(U[0]*y-U[1]*x)/det*H]};
     const a=uv([s,s]), b=uv([-s,s]), c=uv([s,-s]), m=[(b[0]-a[0])/100,(b[1]-a[1])/100,(c[0]-a[0])/100,(c[1]-a[1])/100,a[0],a[1]];
-    under=`<image href="https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=600&Return=JPEG" width="100" height="100" preserveAspectRatio="none" opacity=".45" transform="matrix(${m.map(v=>v.toFixed(4)).join(' ')})"/>`}
+    under=`<image href="${dssUrl(o,S,600)}" width="100" height="100" preserveAspectRatio="none" opacity=".45" transform="matrix(${m.map(v=>v.toFixed(4)).join(' ')})"/>`}
   return `<figure class="ref frame"><svg viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" style="aspect-ratio:${(vw/vh).toFixed(3)}" role="img" aria-label="Снимок объекта с рамкой вашего кадра">
     ${under}<image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"/><!-- без смешивания с подложкой: иначе серое небо DSS даёт на цветном снимке белёсую дымку -->
     <polygon data-geo='${JSON.stringify(g)}' points="${pts.map(p=>p.map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="none" stroke="#7fd3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
@@ -989,14 +990,16 @@ function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg){
 function frameHtml(o,fov,fill){
   const S=+clamp(Math.max(fov[0]*1.25,o.a*1.3)/60,.1,8).toFixed(2), k=100/(S*60); // градусы поля схемы; единиц схемы на угловую минуту
   const fw=fov[0]*k, fh=fov[1]*k, rx=Math.max(o.a*k/2,.6), ry=Math.max(o.b*k/2,.6), f=Math.round(+$('focal').value||0);
-  const img=window.claude?'':`<image href="https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=500&Return=JPEG" width="100" height="100" opacity=".9"/>`;
+  const img=window.claude?'':`<image href="${dssUrl(o,S,500)}" width="100" height="100" opacity=".9"/>`;
   const tip=fitTip(o,fov,fill);
   return `<figure class="ref frame"><svg viewBox="0 0 100 100" role="img" aria-label="Как объект помещается в кадр">${img}
     <ellipse cx="50" cy="50" rx="${rx.toFixed(2)}" ry="${ry.toFixed(2)}" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 1.5" vector-effect="non-scaling-stroke"/>
     <rect x="${(50-fw/2).toFixed(2)}" y="${(50-fh/2).toFixed(2)}" width="${fw.toFixed(2)}" height="${fh.toFixed(2)}" fill="none" stroke="#7fd3ff" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
     <figcaption>Ваш кадр (голубая рамка) ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}° и размер объекта по каталогу (пунктир, без наклона) ${fmtR(o.a)}′×${fmtR(o.b)}′ на снимке DSS, поле ${fmtR(S)}°: ${tip}. Камеру можно повернуть — рамка показана длинной стороной по горизонтали.</figcaption></figure>`}
 const refFov=o=>+clamp(o.a*1.6/60,.15,3).toFixed(2);
-const refUrl=o=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${refFov(o)}&Pixels=500&Return=JPEG`;
+// Linear: у SkyView по умолчанию логарифмическая шкала — фон неба выходит серой пеленой
+const dssUrl=(o,S,px)=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=${px}&Scaling=Linear&Return=JPEG`;
+const refUrl=o=>dssUrl(o,refFov(o),500);
 // На «Фото» — цветной снимок Stellarium (как объект выглядит на готовой астрофотографии), на «Визуале» и там, где цветного нет, —
 // чёрно-белый DSS: он ближе к тому, что видно в окуляр
 const stellUrl=f=>'https://raw.githubusercontent.com/Stellarium/stellarium/master/nebulae/default/'+encodeURIComponent(f);
@@ -1049,7 +1052,7 @@ function refImg(o,kind,fov,fill){
       // привязанное к тем же координатам: одна картинка, цветной объект в центре и рамка целиком
       return frameOverlay(o,fov,fill,url,tl,tr,T(0),cap+(fov[0]/60>imgW?' · вокруг — небо из обзора DSS2':''),fov[0]/60>imgW)}
     if(!wk){const S=+clamp(Math.max(refFov(o),fov[0]*1.25/60),.15,8).toFixed(2), s=S/2;
-      const u=`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=500&Return=JPEG`;
+      const u=dssUrl(o,S,500);
       return frameOverlay(o,fov,fill,u,[s,s],[-s,s],[s,-s],`Обзор DSS2, NASA SkyView · поле ${fmtR(S)}° · север сверху, восток слева`)}
     return refImg(o,kind)+frameHtml(o,fov,fill)}
   return window.claude
