@@ -218,6 +218,8 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     </select></label>
     <h3 class="grp">Визуал</h3>
     <label>Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
+    <label>Фокусное телескопа, мм<input id="tfocal" type="number" min="100" step="10" placeholder="например, 1500"></label>
+    <label>Окуляры: фокус/поле°<input id="eps" type="text" inputmode="decimal" placeholder="25/52, 10/68" aria-describedby="epsHelp"><span class="sub" id="epsHelp">через запятую; поле — видимое поле окуляра из его паспорта</span></label>
     <label>Фильтр OIII<input id="oiii" type="checkbox"></label>
     <label>Расшифровка голоса<select id="asr">
       <option value="fast">Быстрая (модель ≈80 МБ)</option>
@@ -1059,7 +1061,7 @@ $('bortle').innerHTML=['','1 — идеально тёмное','2 — тёмн�
 const now=new Date(); now.setHours(now.getHours()-12); // до полудня ещё идёт «вчерашняя» ночь
 $('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
-for(const id of ['focal','sensor','aperture']) $(id).value=saved[id]??'';
+for(const id of ['focal','sensor','aperture','tfocal','eps']) $(id).value=saved[id]??'';
 $('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('hideDone').checked=!!saved.hideDone;
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
@@ -1194,6 +1196,7 @@ function drawMap(n,lat,hm,L){
     svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.4*u}" fill="#b9c3dd" stroke="#0c111d" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="${f1(p[0]+6*u)}" y="${f1(p[1]+4*u)}" font-size="${10*u}" font-style="italic" fill="#b9c3dd">${pl.name}</text>`}
   const mo=moonPos(dd), mp=P(mo.ra,mo.dec);
   if(vis(mp)) svg+=`<g transform="translate(${f1(mp[0])},${f1(mp[1])}) scale(${(.38*u).toFixed(4)})">${moonPhaseSvg(moonIllum(dd),moonIllum(dd+.25)>moonIllum(dd))}</g><text x="${f1(mp[0]+10*u)}" y="${f1(mp[1]+4*u)}" font-size="${10*u}" fill="var(--moon)">Луна</text>`;
+  svg+=eyepieceCircles(Lst,sl,cl,P,u);
   for(const {o,p} of objs) if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${6*u}" fill="none" stroke="var(--accent)" stroke-width="1.8" ${ns}/>`
     +`<text x="${f1(p[0]+8*u)}" y="${f1(p[1]-7*u)}" font-size="${11*u}" font-weight="600" fill="var(--accent)">${esc(o.id)}</text>`;
   const up=objs.filter(q=>q.p).sort((a,b)=>b.p[2]-a.p[2]), down=objs.filter(q=>!q.p);
@@ -1216,6 +1219,18 @@ function drawMap(n,lat,hm,L){
     <div id="mapList">${listHtml}</div>`;
 }
 let mapArgs=null, mapRaf=0;
+// Окуляры из настроек: «25/52, 10/68» → [{fe:25,af:52}, …]; истинное поле = видимое поле × фокус окуляра / фокус телескопа
+const eyepieces=()=>($('eps').value||'').split(/[,;]/).map(s=>s.trim().replace(',','.').match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/)).filter(Boolean).map(m=>({fe:+m[1],af:+m[2]}));
+// круги поля окуляров в центре карты: двигаете карту — круги остаются на месте, как в окуляре. Масштаб берём в самом центре вида
+// (проекция к краю растягивается), поэтому центр переводим обратно в RA/Dec и смотрим, сколько единиц карты занимает 1°
+function eyepieceCircles(Lst,sl,cl,P,u){const ft=+$('tfocal').value, eps=eyepieces(); if(!(ft>0)||!eps.length) return '';
+  const cx=mapView.cx, cy=mapView.cy, dx=200-cx, dy=200-cy, h0=90-Math.hypot(dx,dy)*90/190; if(h0<=0) return '';
+  const az=Math.atan2(dx,dy), sh=sin(h0), ch=cos(h0), dec=asin(sl*sh+cl*ch*Math.cos(az)), ra=Lst-Math.atan2(-Math.sin(az)*ch,cl*sh-sl*ch*Math.cos(az))/R;
+  const pn=P(ra,dec+.5), pe=P(ra+.5/Math.max(cos(dec),.05),dec); if(!pn||!pe) return '';
+  const k=(Math.hypot(pn[0]-cx,pn[1]-cy)+Math.hypot(pe[0]-cx,pe[1]-cy)); // единиц карты на градус: (на 0,5° к северу + на 0,5° к востоку)
+  return eps.map(({fe,af})=>{const tf=af*fe/ft, r=tf/2*k; if(r<3*u) return '';
+    return `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${r.toFixed(3)}" fill="none" stroke="#9be37f" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`
+      +`<text x="${cx.toFixed(2)}" y="${(cy-r-3*u).toFixed(2)}" text-anchor="middle" font-size="${9*u}" fill="#9be37f">${fmtR(fe)} мм · ×${Math.round(ft/fe)} · ${fmtR(+tf.toFixed(2))}°</text>`}).join('')}
 // на весь экран: слой карты поверх страницы. Системный полноэкранный режим не включаем — Android при нём показывает
 // плашку «чтобы выйти, проведите…», и она закрывает ползунок яркости внизу
 function setMapFull(on,fromHistory){mapFull=on; $('map').classList.toggle('full',on);
@@ -1253,7 +1268,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,asr:$('asr').value,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:$('eps').value,oiii:$('oiii').checked,asr:$('asr').value,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1364,7 +1379,7 @@ $('geo').onclick=()=>{const st=$('geoSt');
     e=>{st.textContent=e.code==1?'Доступ к геопозиции запрещён — разрешите его для приложения в настройках телефона.':'Не удалось определить местоположение. Выйдите на открытое место и попробуйте ещё раз.'},
     {enableHighAccuracy:false,timeout:20000,maximumAge:6e5})};
 for(const id of ['lat','lon']) $(id).oninput=()=>{$('city').value=-1;render()};
-$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('hideDone').onchange=$('aperture').oninput=$('q').oninput=render;
+$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('hideDone').onchange=$('aperture').oninput=$('q').oninput=$('tfocal').oninput=$('eps').oninput=render;
 // Смарт-телескоп — это просто готовая пара «фокусное + сенсор»; ручная правка любого из них сбрасывает выбор модели
 const syncScope=()=>{$('scope').value=`${$('focal').value}|${$('sensor').value}`; if($('scope').selectedIndex<0)$('scope').value=''};
 $('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal').value=f;$('sensor').value=s} render()};
