@@ -90,6 +90,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .log button[data-act=rec][aria-pressed=true]{color:#fff;background:#b3261e;border-color:#b3261e}
 .catsel{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;margin:0;padding:6px 10px 10px;min-width:0}
 .catsel legend{font-size:12px;color:var(--muted);padding:0 4px}
+#catKind{margin:2px 0 6px}
 #catList{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:0 8px}
 #catList label{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
 #catList label small{color:var(--muted)}
@@ -149,9 +150,14 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
     <label>Фильтр OIII для визуала<input id="oiii" type="checkbox"></label>
     <label>Скрывать снятое и просмотренное<input id="hideDone" type="checkbox"></label>
     <fieldset class="catsel" id="catsel" hidden><legend>Каталоги в рекомендациях</legend>
+      <div class="cats" id="catKind" role="group" aria-label="Для какой вкладки выбор">
+        <button type="button" data-kind="photo" aria-pressed="true">Для фото</button>
+        <button type="button" data-kind="visual" aria-pressed="false">Для визуала</button>
+      </div>
       <div id="catList"></div>
       <div class="catbtns" id="catBtns">
         <button type="button" data-preset="std">Стандартный</button>
+        <button type="button" data-preset="photo">Для съёмки</button>
         <button type="button" data-preset="dob">Для 12″ добсона</button>
         <button type="button" data-preset="all">Все</button>
         <button type="button" data-preset="none">Снять все</button>
@@ -756,19 +762,25 @@ const PRESETS={std:['base'],
   // для поиска слабого в 12″: галактики и их группы, планетарные, тёмные и светлые туманности, звёздные скопления;
   // без PGC/UGC/VV/LDN/LBN (тысячи объектов, почти всё повторяет NGC/IC или не видно глазом) и без южных каталогов
   dob:['base','M','C','NGC','IC','B','Sh2','vdB','Cr','Mel','Arp','PK','ACO','HCG','Tr','St'],
+  // для съёмки: светлые и тёмные туманности Линдса, Шарплесс, пыль Барнарда и ван ден Берга, взаимодействующие галактики
+  photo:['base','M','C','NGC','IC','Sh2','LBN','LDN','B','vdB','Arp','HCG'],
   all:['base',...(HAS_EXTRA?CAT_LIST.map(c=>c[0]):[])],none:[]};
-let catOn=new Set(saved.cats||PRESETS.std);
-const catMask=()=>HAS_EXTRA?CAT_LIST.reduce((m,c,i)=>catOn.has(c[0])?m|1<<i:m,0):0;
-const inCats=(o,mask)=>o.base&&catOn.has('base')||(o.cats&mask);
+// для фото и визуала — свои наборы; старое сохранение (один список на обе вкладки) переносим в оба
+const sc=saved.cats, catSets={photo:new Set(sc?.photo||(Array.isArray(sc)?sc:PRESETS.std)),visual:new Set(sc?.visual||(Array.isArray(sc)?sc:PRESETS.std))};
+let catEdit='photo';
+const catMask=kind=>HAS_EXTRA?CAT_LIST.reduce((m,c,i)=>catSets[kind].has(c[0])?m|1<<i:m,0):0;
+const inCats=(o,mask,kind)=>o.base&&catSets[kind].has('base')||(o.cats&mask);
 if(HAS_EXTRA){$('catsel').hidden=false;
   const count=i=>CATALOG.filter(o=>o.cats>>i&1).length;
   $('catList').innerHTML=[['base','Основной список','217 объектов, которые выбирали вручную',CATALOG.filter(o=>o.base).length],
     ...CAT_LIST.map((c,i)=>[c[0],c[0],c[1],count(i)])].filter(c=>c[3])
     .map(([k,label,title,n])=>`<label title="${esc(title)}"><input type="checkbox" value="${esc(k)}">${esc(label)} <small>${n}</small></label>`).join('');
-  const syncCats=()=>{for(const b of $('catList').querySelectorAll('input')) b.checked=catOn.has(b.value)};
+  const syncCats=()=>{for(const b of $('catList').querySelectorAll('input')) b.checked=catSets[catEdit].has(b.value);
+    for(const b of $('catKind').children) b.setAttribute('aria-pressed',b.dataset.kind==catEdit)};
   syncCats();
-  $('catList').onchange=e=>{catOn[e.target.checked?'add':'delete'](e.target.value); render()};
-  $('catBtns').onclick=e=>{const p=e.target.dataset?.preset; if(!p)return; catOn=new Set(PRESETS[p]); syncCats(); render()};
+  $('catKind').onclick=e=>{const k=e.target.dataset?.kind; if(k){catEdit=k; syncCats()}};
+  $('catList').onchange=e=>{catSets[catEdit][e.target.checked?'add':'delete'](e.target.value); render()};
+  $('catBtns').onclick=e=>{const p=e.target.dataset?.preset; if(!p)return; catSets[catEdit]=new Set(PRESETS[p]); syncCats(); render()};
 }
 function fillCity(){const c=CITIES[$('city').value]; if(c){$('lat').value=c.lat;$('lon').value=c.lon}}
 if($('city').value>=0) fillCity(); else {$('lat').value=saved.lat??55.75;$('lon').value=saved.lon??37.62}
@@ -779,7 +791,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked,cats:[...catOn]}))}catch{}
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]}}))}catch{}
   const city=CITIES[$('city').value];
   $('date').previousElementSibling.textContent=fmtDate(date);
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
@@ -807,13 +819,13 @@ function render(){
   const cards=kind=>{
   const minAlt=kind=='photo'?PHOTO_ALT:VISUAL_ALT;
   // поиск идёт по всему каталогу: без категории, без порога оценки, точное совпадение номера — первым
-  const q=norm($('q').value), exact=o=>o.keys.includes(q), mask=catMask();
+  const q=norm($('q').value), exact=o=>o.keys.includes(q), mask=catMask(kind);
   // «Мой план» и «Журнал» показывают всё отмеченное, даже невидимое этой ночью, по порядку времени наилучшей высоты
   const order=r=>r.h?r.tMax:9e15;
   // «Скрывать снятое и просмотренное» убирает отмеченное только из рекомендаций: поиск, план и журнал показывают всё.
   // На вкладке «Фото» прячется снятое, на «Визуале» — просмотренное
   const hide=!mine&&!q&&$('hideDone').checked;
-  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?o.key.includes(q):(mine||inCats(o,mask))&&(!CATS[cat]||CATS[cat].includes(o.type)))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
+  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?o.key.includes(q):(mine||inCats(o,mask,kind))&&(!CATS[cat]||CATS[cat].includes(o.type)))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
     .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)).slice(0,q?30:mine?999:15);
   return rows.length?rows.map(r=>{const o=r.o;
     const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
@@ -943,5 +955,5 @@ render();
 if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 8 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 9 от 12.11.2026";v.hidden=false}</script>
 </body></html>
