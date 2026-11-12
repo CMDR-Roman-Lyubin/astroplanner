@@ -896,7 +896,8 @@ const moonPhaseName=(k,waxing)=>k<.03?'Новолуние':k>.97?'Полнолу
   :(waxing?['Растущий серп','Первая четверть','Растущая Луна']:['Убывающий серп','Последняя четверть','Убывающая Луна'])[k<.42?0:k<.58?1:2];
 // ---------- Карта неба для выбранного списка ----------
 // Вид снизу вверх: центр — зенит, край — горизонт, север сверху, восток слева. Звёзды до 5ᵐ и линии созвездий из catalog-extra.js
-const STARMAP=HAS_EXTRA?{
+// typeof — на случай, если кэш отдал файл каталога от прошлой версии без данных карты: тогда карта без звёзд, но приложение работает
+const STARMAP=typeof SKY_STARS=='string'&&typeof SKY_LINES=='string'&&typeof SKY_NAMES=='string'?{
   stars:SKY_STARS.split(';').map(s=>s.split(',').map(Number)),
   lines:SKY_LINES.split(';').map(s=>s.split(',').map(Number)),
   names:SKY_NAMES.split(';').map(s=>{const [nm,ra,dec]=s.split(',');return [nm,+ra,+dec]})}:null;
@@ -1139,5 +1140,10 @@ render();
   $('red').onclick=()=>{const on=!document.documentElement.classList.contains('red'); red(on); if(on) set(false)};
 })();
 // Офлайн-режим установленного приложения. В артефакте и в файле, открытом с диска, сервис-воркеры недоступны
-if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navigator){
+  // новая версия установилась, пока приложение открыто, — перезагружаемся в неё один раз (при самой первой установке не нужно)
+  const had=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!window.__reloaded){window.__reloaded=true;location.reload()}});
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>

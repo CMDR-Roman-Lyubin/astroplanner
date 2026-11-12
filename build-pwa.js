@@ -31,18 +31,18 @@ write('manifest.webmanifest', JSON.stringify({
   icons: [192, 512].map(s => ({ src: `icon-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable' })),
 }, null, 1));
 
-// Сначала кэш (в поле сеть либо отсутствует, либо «висит»), обновление подтягивается в фоне и видно при следующем запуске
-write('sw.js', `const CACHE='sky-v1';
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./','catalog-extra.js','manifest.webmanifest','icon-192.png','icon-512.png'])));self.skipWaiting()});
-self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
+// Сначала кэш (в поле сеть либо отсутствует, либо «висит»). Каждая сборка — свой кэш: новый sw.js скачивает все файлы версии разом
+// и только потом заменяет старый кэш, поэтому страница и каталог всегда из одной версии (раньше по отдельности обновлялись — и не сходились)
+const FILES = ['./', 'catalog-extra.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+write('sw.js', `const CACHE='sky-${n}-${Date.now().toString(36)}';
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(${JSON.stringify(FILES)}.map(f=>new Request(f,{cache:'reload'})))));self.skipWaiting()});
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!=CACHE&&k!='sky-ref').map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   // снимки обзора неба не меняются: раз увиденный хранится навсегда и показывается без сети
   if(u.hostname=='skyview.gsfc.nasa.gov'||u.hostname=='raw.githubusercontent.com'||u.hostname.endsWith('.wikimedia.org')){e.respondWith(caches.open('sky-ref').then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{c.put(e.request,r.clone());return r}))));return}
   if(e.request.method!='GET'||u.origin!=location.origin)return;
-  e.respondWith(caches.match(e.request,{ignoreSearch:true}).then(hit=>{
-    const net=fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}return r});
-    return hit?(net.catch(()=>{}),hit):net}));
+  e.respondWith(caches.open(CACHE).then(c=>c.match(e.request,{ignoreSearch:true})).then(hit=>hit||fetch(e.request)));
 });
 `);
 
