@@ -124,6 +124,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:12p
     </select></label>
     <label>Апертура для визуала, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
     <label>Фильтр OIII для визуала<input id="oiii" type="checkbox"></label>
+    <label>Скрывать снятое и просмотренное<input id="hideDone" type="checkbox"></label>
   </form></details>
 
   <section aria-label="Ход ночи">
@@ -614,7 +615,7 @@ $('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')
 let saved={}; try{saved=JSON.parse(localStorage.getItem('sky')||'{}')}catch{}
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
 for(const id of ['focal','sensor','aperture']) $(id).value=saved[id]??'';
-$('oiii').checked=!!saved.oiii;
+$('oiii').checked=!!saved.oiii; $('hideDone').checked=!!saved.hideDone;
 function fillCity(){const c=CITIES[$('city').value]; if(c){$('lat').value=c.lat;$('lon').value=c.lon}}
 if($('city').value>=0) fillCity(); else {$('lat').value=saved.lat??55.75;$('lon').value=saved.lon??37.62}
 
@@ -624,7 +625,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked}))}catch{}
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked}))}catch{}
   const city=CITIES[$('city').value];
   $('date').previousElementSibling.textContent=fmtDate(date);
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
@@ -655,7 +656,10 @@ function render(){
   const norm=s=>s.toLowerCase().replace(/\s+/g,''), q=norm($('q').value), exact=o=>norm(o.id)==q;
   // «Мой план» и «Журнал» показывают всё отмеченное, даже невидимое этой ночью, по порядку времени наилучшей высоты
   const order=r=>r.h?r.tMax:9e15;
-  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&(q?norm(o.id+o.name).includes(q):!CATS[cat]||CATS[cat].includes(o.type))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
+  // «Скрывать снятое и просмотренное» убирает отмеченное только из рекомендаций: поиск, план и журнал показывают всё.
+  // На вкладке «Фото» прячется снятое, на «Визуале» — просмотренное
+  const hide=!mine&&!q&&$('hideDone').checked;
+  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?norm(o.id+o.name).includes(q):!CATS[cat]||CATS[cat].includes(o.type))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
     .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)).slice(0,q?30:mine?999:15);
   return rows.length?rows.map(r=>{const o=r.o;
     const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
@@ -692,7 +696,7 @@ function render(){
 }
 $('city').onchange=()=>{fillCity();render()};
 for(const id of ['lat','lon']) $(id).oninput=()=>{$('city').value=-1;render()};
-$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('aperture').oninput=$('q').oninput=render;
+$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('hideDone').onchange=$('aperture').oninput=$('q').oninput=render;
 // Смарт-телескоп — это просто готовая пара «фокусное + сенсор»; ручная правка любого из них сбрасывает выбор модели
 const syncScope=()=>{$('scope').value=`${$('focal').value}|${$('sensor').value}`; if($('scope').selectedIndex<0)$('scope').value=''};
 $('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal').value=f;$('sensor').value=s} render()};
