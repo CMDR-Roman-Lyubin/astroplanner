@@ -1103,7 +1103,7 @@ function render(){
       <span class="lbl">В план:</span>${kindLists.map(l=>`<button type="button" data-act="list" data-list="${l.id}" aria-pressed="${l.ids.includes(o.id)}">${esc(l.name)}</button>`).join('')}
       <button type="button" data-act="done" aria-pressed="${!!e.done}">${kind=='photo'?'Снято':'Просмотрено'}</button>
       ${ratingHtml(e)}${similarHtml(o,kind,e,lat)}
-      ${kind=='photo'?photoLog(o,e):`<textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(e.note||'')}</textarea>`+audioLog(e)+shotImg(o)}
+      ${kind=='photo'?photoLog(o,e):`<textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(e.note||'')}</textarea><button type="button" data-act="clrnote">Очистить заметку</button>`+audioLog(e)+shotImg(o)}
     </div></details>`}).join('')
     :q?'<p class="empty">В каталоге такого объекта нет.</p>'
     :mine=='plan'?`<p class="empty">В списке «${esc(L.name)}» пока пусто. Откройте карточку объекта в рекомендациях или найдите его поиском и нажмите кнопку с названием списка.</p>`
@@ -1142,7 +1142,11 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
   const r=rec(card.dataset.id,kind);
   if(act=='rec'){toggleRec(b,card,box);return}
   if(act=='stt'){transcribe(b,card,box);return}
-  if(act=='unaud'){ // удаление безвозвратно, поэтому в два нажатия
+  if(act=='clrnote'){ // текст не вернуть, поэтому тоже в два нажатия
+    if(!r.note){box.querySelector('[data-act=note]').value='';return}
+    if(b.textContent!='Точно очистить?'){b.textContent='Точно очистить?';setTimeout(()=>b.textContent='Очистить заметку',3000);return}
+    b.textContent='Очистить заметку'; r.note=''; box.querySelector('[data-act=note]').value=''}
+  else if(act=='unaud'){ // удаление безвозвратно, поэтому в два нажатия
     if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?';setTimeout(()=>b.textContent='Удалить',3000);return}
     photos.del(b.dataset.id); r.audio=(r.audio||[]).filter(x=>x!=b.dataset.id); b.closest('.aud').remove()}
   else if(act=='unimg'){const img=box.querySelector('img'); photos.del(r.img); delete r.img; img.hidden=b.hidden=true; img.removeAttribute('src'); img.removeAttribute('data-img')}
