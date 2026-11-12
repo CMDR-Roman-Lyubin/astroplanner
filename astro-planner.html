@@ -87,6 +87,10 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .catsel{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;margin:0;padding:6px 10px 10px;min-width:0}
 .catsel legend{font-size:12px;color:var(--muted);padding:0 4px}
 #catKind{margin:2px 0 6px}
+.magrange{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:13px;color:var(--muted)}
+.magrange span{flex-basis:100%}
+.magrange label{flex:1 1 140px;flex-direction:row;align-items:center;gap:8px;font-size:13px}
+.magrange input{padding:0;border:0;background:none;accent-color:var(--accent)}
 #catList{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:0 8px}
 #catList label{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
 #catList label small{color:var(--muted)}
@@ -154,7 +158,6 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
       <div class="catbtns" id="catBtns">
         <button type="button" data-preset="std">Стандартный</button>
         <button type="button" data-preset="photo">Для съёмки</button>
-        <button type="button" data-preset="dob">Для 12″ добсона</button>
         <button type="button" data-preset="all">Все</button>
         <button type="button" data-preset="none">Снять все</button>
       </div>
@@ -177,6 +180,11 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
   </div>
   <input id="q" type="search" placeholder="Поиск объекта: M31, Вуаль, NGC 7000…" aria-label="Поиск объекта">
   <div class="cats" id="cats" role="group" aria-label="Категория объектов"></div>
+  <div class="magrange" id="magBox" hidden>
+    <span id="magTxt"></span>
+    <label>от<input id="magMin" type="range" min="-1" max="16" step="0.5" aria-label="Самый яркий блеск в рекомендациях"></label>
+    <label>до<input id="magMax" type="range" min="-1" max="16" step="0.5" aria-label="Самый слабый блеск в рекомендациях"></label>
+  </div>
   <div class="list" id="list"></div>
   <p class="sub" id="sync">План, журнал и снимки хранятся на этом устройстве.</p>
   <p class="sub">Оценка 0–100 — эвристика: часы над горизонтом в тёмное время, высота, Луна, размер (фото) или поверхностная яркость против засветки (визуал). Координаты каталога округлены до ~0,5°.</p>
@@ -753,11 +761,15 @@ let saved={}; try{saved=JSON.parse(localStorage.getItem('sky')||'{}')}catch{}
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
 for(const id of ['focal','sensor','aperture']) $(id).value=saved[id]??'';
 $('oiii').checked=!!saved.oiii; $('hideDone').checked=!!saved.hideDone;
+// Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
+const MAG_LO=-1, MAG_HI=16;
+$('magMin').value=saved.magMin??MAG_LO; $('magMax').value=saved.magMax??MAG_HI;
+const magTxt=(lo,hi)=>{const f=x=>String(x).replace('.',',')+'ᵐ';
+  return lo<=MAG_LO&&hi>=MAG_HI?'Блеск: любой':lo<=MAG_LO?`Блеск: ярче ${f(hi)}`:hi>=MAG_HI?`Блеск: тусклее ${f(lo)}`:`Блеск: от ${f(lo)} до ${f(hi)}`};
+for(const [id,other,cmp] of [['magMin','magMax',(a,b)=>a>b],['magMax','magMin',(a,b)=>a<b]])
+  $(id).oninput=()=>{if(cmp(+$(id).value,+$(other).value)) $(other).value=$(id).value; render()}; // ползунки не перескакивают друг через друга
 // Выбор каталогов: base — основной список; по умолчанию только он
 const PRESETS={std:['base'],
-  // для поиска слабого в 12″: галактики и их группы, планетарные, тёмные и светлые туманности, звёздные скопления;
-  // без PGC/UGC/VV/LDN/LBN (тысячи объектов, почти всё повторяет NGC/IC или не видно глазом) и без южных каталогов
-  dob:['base','M','C','NGC','IC','B','Sh2','vdB','Cr','Mel','Arp','PK','ACO','HCG','Tr','St'],
   // для съёмки: светлые и тёмные туманности Линдса, Шарплесс, пыль Барнарда и ван ден Берга, взаимодействующие галактики
   photo:['base','M','C','NGC','IC','Sh2','LBN','LDN','B','vdB','Arp','HCG'],
   all:['base',...(HAS_EXTRA?CAT_LIST.map(c=>c[0]):[])],none:[]};
@@ -787,7 +799,9 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]}}))}catch{}
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value}))}catch{}
+  const lo=+$('magMin').value, hi=+$('magMax').value;
+  $('magBox').hidden=tab!='visual'; $('magTxt').textContent=magTxt(lo,hi);
   const city=CITIES[$('city').value];
   $('date').previousElementSibling.textContent=fmtDate(date);
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · настройки`;
@@ -821,7 +835,7 @@ function render(){
   // «Скрывать снятое и просмотренное» убирает отмеченное только из рекомендаций: поиск, план и журнал показывают всё.
   // На вкладке «Фото» прячется снятое, на «Визуале» — просмотренное
   const hide=!mine&&!q&&$('hideDone').checked;
-  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?o.key.includes(q):(mine||inCats(o,mask,kind))&&(!CATS[cat]||CATS[cat].includes(o.type)))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
+  const rows=CATALOG.filter(o=>(!mine||log[o.id]?.[kind]?.[mine])&&!(hide&&log[o.id]?.[kind]?.done)&&(q?o.key.includes(q):(mine||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi))&&(!CATS[cat]||CATS[cat].includes(o.type)))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,$('oiii').checked))}))
     .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)).slice(0,q?30:mine?999:15);
   return rows.length?rows.map(r=>{const o=r.o;
     const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
