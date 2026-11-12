@@ -984,7 +984,7 @@ function frameOverlay(o,fov,fill,url,TL,TR,BL,cap,bg){
     const a=uv([s,s]), b=uv([-s,s]), c=uv([s,-s]), m=[(b[0]-a[0])/100,(b[1]-a[1])/100,(c[0]-a[0])/100,(c[1]-a[1])/100,a[0],a[1]];
     under=`<image href="https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(3)},${o.dec.toFixed(3)}&Size=${S}&Pixels=600&Return=JPEG" width="100" height="100" preserveAspectRatio="none" opacity=".45" transform="matrix(${m.map(v=>v.toFixed(4)).join(' ')})"/>`}
   return `<figure class="ref frame"><svg viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" style="aspect-ratio:${(vw/vh).toFixed(3)}" role="img" aria-label="Снимок объекта с рамкой вашего кадра">
-    ${under}<image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"${bg?' style="mix-blend-mode:screen"':''}/>
+    ${under}<image href="${url}" width="100" height="${H.toFixed(2)}" preserveAspectRatio="none"/><!-- без смешивания с подложкой: иначе серое небо DSS даёт на цветном снимке белёсую дымку -->
     <polygon data-geo='${JSON.stringify(g)}' points="${pts.map(p=>p.map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="none" stroke="#7fd3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
     <label class="rot">Поворот кадра<input type="range" data-act="rot" min="0" max="179" step="1" value="${camRot}" aria-label="Поворот кадра на небе"><output>${camRot}°</output></label>
     <figcaption>${cap} · голубая рамка — ваш кадр ${fmtR(+(fov[0]/60).toFixed(2))}°×${fmtR(+(fov[1]/60).toFixed(2))}°: ${fitTip(o,fov,fill)}. Поворот 0° — длинная сторона по линии восток–запад; у смарт-телескопов на альт-азимутальной монтировке кадр за ночь поворачивается сам.</figcaption></figure>`}
