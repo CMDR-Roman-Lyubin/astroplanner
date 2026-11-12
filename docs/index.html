@@ -50,7 +50,7 @@ input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--acce
 #setup{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:12px}
 #setupDone{width:100%}
 .grp{grid-column:1/-1;margin:6px 0 0;font-size:13px;font-weight:600;color:var(--accent)}
-.where{font:inherit;color:var(--accent);background:none;border:0;padding:4px 0;text-align:left;cursor:pointer}
+.where{margin:0;color:var(--muted);font-size:14px} /* только место и дата; настройки открывает шестерёнка */
 .hbtns #gear{font-size:15px;line-height:1;padding:3px 9px}
 .list h2{font-size:15px;font-weight:600;margin:10px 0 0}
 .log label{flex:1 1 150px}
@@ -153,7 +153,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <button role="tab" id="mode-visual" aria-selected="false">Визуал</button>
   </div>
 
-  <button type="button" class="where" id="setupSum" aria-controls="setup">Место и дата</button>
+  <p class="where" id="setupSum">Место и дата</p>
   <section id="setup" hidden aria-label="Настройки">
   <form id="f">
     <h3 class="grp">Место и дата</h3>
@@ -1042,7 +1042,7 @@ function render(){
   $('listDel').disabled=lists.filter(l=>l.kind==mode).length<2;
   const city=CITIES[$('city').value];
   $('date').previousElementSibling.textContent=fmtDate(date);
-  $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)} · изменить`;
+  $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)}`;
   const tf=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',timeZone:city?.tz}), hm=t=>tf.format(t);
   const n=night(lat,lon,date);
 
@@ -1127,7 +1127,7 @@ $('sensor').onchange=$('focal').oninput=()=>{syncScope();render()};
 syncScope();
 $('f').onsubmit=e=>e.preventDefault();
 const showSetup=open=>{$('setup').hidden=!open; $('gear').setAttribute('aria-pressed',open); if(open) $('setup').scrollIntoView({block:'start',behavior:'smooth'})};
-$('gear').onclick=$('setupSum').onclick=()=>showSetup($('setup').hidden);
+$('gear').onclick=()=>showSetup($('setup').hidden);
 $('setupDone').onclick=()=>{showSetup(false); window.scrollTo({top:0,behavior:'smooth'})};
 // Отметки и заметки правят карточку на месте, без перерисовки списка: иначе раскрытая карточка схлопнется, а поле потеряет фокус
 function logChanged(card){const id=card.dataset.id, e=log[id];
@@ -1292,5 +1292,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 18 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 19 от 12.11.2026";v.hidden=false}</script>
 </body></html>
