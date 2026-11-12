@@ -177,6 +177,10 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
     </select></label>
     <label data-mode="visual">Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
     <label data-mode="visual">Фильтр OIII<input id="oiii" type="checkbox"></label>
+    <label data-mode="visual">Расшифровка голоса<select id="asr">
+      <option value="fast">Быстрая (модель ≈80 МБ)</option>
+      <option value="best">Точная (модель ≈250 МБ)</option>
+    </select></label>
     <label>Скрывать снятое и просмотренное<input id="hideDone" type="checkbox"></label>
     <fieldset class="catsel" id="catsel" hidden><legend id="catLegend">Каталоги в рекомендациях</legend>
       <div id="catList"></div>
@@ -700,12 +704,62 @@ function showImgs(root){
 // ---------- Диктофон для визуальных наблюдений: записи лежат на устройстве, ссылки на них — в visual.audio ----------
 // В окне claude.ai микрофон закрыт для страницы, поэтому запись есть только в установленном приложении
 const canRec=!window.claude&&!!navigator.mediaDevices?.getUserMedia&&!!window.MediaRecorder;
-const audHtml=id=>/^[\w-]{1,64}$/.test(id)?`<span class="aud" hidden><audio data-aud="${id}" controls preload="metadata"></audio><button type="button" data-act="unaud" data-id="${id}">Удалить</button></span>`:'';
+const audHtml=id=>/^[\w-]{1,64}$/.test(id)?`<span class="aud" hidden><audio data-aud="${id}" controls preload="metadata"></audio><button type="button" data-act="stt" data-id="${id}">В текст</button><button type="button" data-act="unaud" data-id="${id}">Удалить</button></span>`:'';
 const audioLog=e=>`<div class="audios">${(e.audio||[]).map(audHtml).join('')}</div>
       ${canRec?`<button type="button" data-act="rec" aria-pressed="${!!recState}">${recState?'■ Стоп':'● Запись'}</button>`
         :'<span class="status">Голосовые заметки записываются в установленном приложении.</span>'}
       <span class="status" role="status"></span>`;
 let recState=null;
+// ---------- Голос → текст: Whisper прямо в приложении, в фоновом потоке, без сторонних программ ----------
+// Модель скачивается один раз при первой расшифровке (библиотека сама хранит её в кэше браузера «transformers-cache»),
+// дальше работает без сети. Библиотеку и её WASM кэширует sw.js. q8 — сжатые веса: base ≈77 МБ, small ≈249 МБ
+const ASR_LIB='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
+const ASR_MODELS={fast:'onnx-community/whisper-base',best:'onnx-community/whisper-small'};
+let asrWorker=null, asrSeq=0; const asrJobs={};
+function asrRun(audio,model,onProgress){
+  if(!asrWorker){
+    const code=`import {pipeline} from '${ASR_LIB}';
+let pipe=null, cur='';
+self.onmessage=async e=>{const {id,audio,model}=e.data;
+  try{
+    if(!pipe||cur!=model){pipe=null; pipe=await pipeline('automatic-speech-recognition',model,{dtype:'q8',device:'wasm',
+      progress_callback:p=>{if(p.status=='progress'&&p.total) self.postMessage({id,file:p.file,loaded:p.loaded,total:p.total})}}); cur=model}
+    self.postMessage({id,stage:'run'});
+    const out=await pipe(audio,{language:'russian',task:'transcribe',chunk_length_s:30,stride_length_s:5});
+    self.postMessage({id,text:(out.text||'').trim()})
+  }catch(err){self.postMessage({id,error:String(err&&err.message||err)})}};`;
+    asrWorker=new Worker(URL.createObjectURL(new Blob([code],{type:'text/javascript'})),{type:'module'});
+    asrWorker.onmessage=e=>{const d=e.data, j=asrJobs[d.id]; if(!j)return;
+      if('text' in d||d.error){delete asrJobs[d.id]; d.error?j.rej(new Error(d.error)):j.res(d.text)} else j.progress(d)};
+    // библиотека не загрузилась (нет сети при первом запуске) — завершаем ожидающие задачи, следующий раз поток создастся заново
+    asrWorker.onerror=e=>{e.preventDefault(); for(const [id,j] of Object.entries(asrJobs)){delete asrJobs[id]; j.rej(new Error('не загрузилась библиотека распознавания'))} asrWorker.terminate(); asrWorker=null};
+  }
+  return new Promise((res,rej)=>{const id=++asrSeq; asrJobs[id]={res,rej,progress:onProgress}; asrWorker.postMessage({id,audio,model},[audio.buffer])});
+}
+// запись (webm/opus) → моно 16 кГц, как ждёт Whisper
+async function to16k(blob){
+  const ac=new AudioContext();
+  try{const buf=await ac.decodeAudioData(await blob.arrayBuffer());
+    const off=new OfflineAudioContext(1,Math.ceil(buf.duration*16000),16000), src=off.createBufferSource();
+    src.buffer=buf; src.connect(off.destination); src.start(); return (await off.startRendering()).getChannelData(0)}
+  finally{ac.close()}
+}
+async function transcribe(btn,card,box){
+  const st=box.querySelector('[role=status]'), key=$('asr').value in ASR_MODELS?$('asr').value:'fast', files={};
+  btn.disabled=true; st.textContent='Готовлю запись…';
+  try{
+    const audio=await to16k(await idb('readonly',s=>s.get(btn.dataset.id)));
+    const text=await asrRun(audio,ASR_MODELS[key],d=>{
+      if(d.stage=='run'){st.textContent='Расшифровываю… на телефоне это может занять около минуты на минуту записи.';return}
+      files[d.file]=d; const v=Object.values(files), p=v.reduce((a,x)=>a+x.loaded,0)/v.reduce((a,x)=>a+x.total,0);
+      st.textContent=`Скачиваю модель распознавания: ${Math.round(p*100)}% — только в первый раз, ${key=='best'?'≈250':'≈80'} МБ.`});
+    if(!text){st.textContent='Речь в записи не распознана.';return}
+    const ta=box.querySelector('[data-act=note]'), r=rec(card.dataset.id,'visual');
+    r.note=(r.note?r.note.trimEnd()+'\n':'')+text; ta.value=r.note; logChanged(card);
+    st.textContent='Текст добавлен в заметку — его можно поправить.';
+  }catch(e){st.textContent=navigator.onLine?'Не удалось расшифровать: '+e.message:'Модель распознавания ещё не скачана. Подключитесь к интернету один раз и нажмите «В текст» снова.'}
+  finally{btn.disabled=false}
+}
 const mmss=ms=>{const s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 async function toggleRec(btn,card,box){
   if(recState){recState.mr.stop();return}
@@ -832,7 +886,7 @@ const now=new Date(); now.setHours(now.getHours()-12); // до полудня е
 $('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
 for(const id of ['focal','sensor','aperture']) $(id).value=saved[id]??'';
-$('oiii').checked=!!saved.oiii; $('hideDone').checked=!!saved.hideDone;
+$('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('hideDone').checked=!!saved.hideDone;
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
 $('magMin').value=saved.magMin??MAG_LO; $('magMax').value=saved.magMax??MAG_HI;
@@ -940,7 +994,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,oiii:$('oiii').checked,asr:$('asr').value,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1055,6 +1109,7 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
     card.querySelector('.marks').textContent=marks(id); saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800); return}
   const r=rec(card.dataset.id,kind);
   if(act=='rec'){toggleRec(b,card,box);return}
+  if(act=='stt'){transcribe(b,card,box);return}
   if(act=='unaud'){ // удаление безвозвратно, поэтому в два нажатия
     if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?';setTimeout(()=>b.textContent='Удалить',3000);return}
     photos.del(b.dataset.id); r.audio=(r.audio||[]).filter(x=>x!=b.dataset.id); b.closest('.aud').remove()}
