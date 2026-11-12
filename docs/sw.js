@@ -1,4 +1,4 @@
-const CACHE='sky-36-mwdk8gus';
+const CACHE='sky-37-mwdkfqnu';
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(["./","catalog-extra.js","stars-vis.js","version.js","manifest.webmanifest","icon-192.png","icon-512.png"].map(f=>new Request(f,{cache:'reload'})))));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith('sky-')&&k!=CACHE&&k!='sky-ref').map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{

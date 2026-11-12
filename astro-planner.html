@@ -93,6 +93,11 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .ref .rot input{flex:1;padding:0;border:0;background:none;accent-color:#7fd3ff}
 .ref .rot output{min-width:2.5em;color:var(--fg);font-variant-numeric:tabular-nums}
 .audios{flex-basis:100%;display:flex;flex-direction:column;gap:6px}
+/* наблюдения (визуал): каждое — отдельный блок с датой, заметкой и записями */
+.repwrap{flex-basis:100%;display:flex;flex-direction:column;gap:8px}
+.rep{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;border:1px solid var(--line);border-radius:8px;padding:8px}
+.rep>label{flex:1 1 100%}
+.repwrap>button[data-act=radd]{align-self:flex-start}
 .audios .aud{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .audios audio{flex:1 1 100%;min-width:0;height:36px} /* плеер на всю ширину, кнопки записи — строкой под ним */
 .log button[data-act=rec][aria-pressed=true]{color:#fff;background:#b3261e;border-color:#b3261e}
@@ -226,7 +231,11 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="best">Точная (модель ≈250 МБ)</option>
     </select></label>
     <h3 class="grp">Рекомендации</h3>
-    <label>Скрывать снятое и просмотренное<input id="hideDone" type="checkbox"></label>
+    <label>Снятое и просмотренное в рекомендациях<select id="doneF">
+      <option value="">показывать вместе со всем</option>
+      <option value="hide">скрывать</option>
+      <option value="only">показывать только их</option>
+    </select></label>
     <fieldset class="catsel" id="catsel" hidden><legend id="catLegend">Каталоги в рекомендациях</legend>
       <div id="catList"></div>
       <div class="catbtns" id="catBtns">
@@ -764,7 +773,12 @@ let types=new Set((saved.types||[]).filter(t=>t in TYPE_PL));
 // Всегда пишется в localStorage (работает и в файле без сети); на опубликованной странице дополнительно — в личный документ
 // пользователя в базе артефакта, чтобы план был один на телефоне и компьютере.
 // записи первой версии журнала были плоскими {plan, seen, note} и относились к визуалу
-const migrate=l=>{for(const [id,e] of Object.entries(l)) if(!e.photo&&!e.visual) l[id]={visual:{plan:e.plan,done:e.seen,note:e.note}}; return l};
+// визуал: несколько наблюдений одного объекта — visual.reports=[{date, note, audio:[id]}], visual.done = дата последнего (для журнала и фильтров).
+// Прежние заметка и записи (visual.note, visual.audio) переходят в первое наблюдение
+const migrate=l=>{for(let [id,e] of Object.entries(l)){
+    if(!e.photo&&!e.visual) l[id]=e={visual:{plan:e.plan,done:e.seen,note:e.note}};
+    const v=e.visual; if(v&&!v.reports&&(v.note||v.audio?.length||v.done)){v.reports=[{date:v.done||'',note:v.note||'',audio:v.audio||[]}]; delete v.note; delete v.audio}}
+  return l};
 let log={}; try{log=migrate(JSON.parse(localStorage.getItem('skylog')||'{}'))}catch{}
 let cloud=null, assetsApi=null, busy=false, again=false, cloudTimer;
 const ruDate=d=>d.split('-').reverse().join('.');
@@ -792,7 +806,8 @@ const fmtR=x=>String(x).replace('.',',');
 const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
   return [...lists.filter(l=>l.ids.includes(id)).map(l=>`${l.kind=='photo'?'фото':'визуал'}: «${l.name}»`),
     p.done&&'снято '+ruDate(p.done)+(p.exp?', '+p.exp+' ч':'')+(p.sessions?', сессий: '+p.sessions:''),
-    v.done&&'просмотрено '+ruDate(v.done),v.audio?.length&&'аудио: '+v.audio.length,
+    v.done&&'просмотрено '+ruDate(v.done)+(v.reports?.length>1?` (наблюдений: ${v.reports.length})`:''),
+    (n=>n&&'аудио: '+n)((v.reports||[]).reduce((a,x)=>a+(x.audio?.length||0),0)),
     p.rating&&'оценка фото '+fmtR(p.rating),v.rating&&'оценка визуала '+fmtR(v.rating)].filter(Boolean).join(' · ')};
 const rec=(id,kind)=>(log[id]||(log[id]={}))[kind]||(log[id][kind]={});
 // оборудование, выбранное сейчас в форме: модель смарт-телескопа или «фокусное + сенсор»
@@ -820,11 +835,20 @@ function showImgs(root){
 // В окне claude.ai микрофон закрыт для страницы, поэтому запись есть только в установленном приложении
 const canRec=!window.claude&&!!navigator.mediaDevices?.getUserMedia&&!!window.MediaRecorder;
 const audHtml=id=>/^[\w-]{1,64}$/.test(id)?`<span class="aud" hidden><audio data-aud="${id}" controls preload="metadata"></audio><button type="button" data-act="stt" data-id="${id}">В текст</button><button type="button" data-act="unaud" data-id="${id}">Удалить</button></span>`:'';
-const audioLog=e=>`<div class="audios">${(e.audio||[]).map(audHtml).join('')}</div>
-      ${canRec?`<button type="button" data-act="rec" aria-pressed="${!!recState}">${recState?'■ Стоп':'● Запись'}</button>`
-        :'<span class="status">Голосовые заметки записываются в установленном приложении.</span>'}
-      <span class="status" role="status"></span>`;
 let recState=null;
+// ---------- Наблюдения (визуал): свежие сверху, у каждого — дата, заметка, голосовые записи ----------
+const syncDone=r=>{if(!r.reports?.length){delete r.reports; delete r.done; return}
+  r.done=r.reports.map(x=>x.date).filter(Boolean).sort().at(-1)||$('date').value};
+const repOf=(card,el)=>{const r=rec(card.dataset.id,'visual'), i=+el.closest('[data-rep]')?.dataset.rep; return {r,i,rep:r.reports?.[i]}};
+function repsHtml(e){const reps=e.reports||[], order=reps.map((_,i)=>i).sort((a,b)=>(reps[b].date||'').localeCompare(reps[a].date||''));
+  return `<div class="repwrap">${order.map(i=>{const x=reps[i]; return `<div class="rep" data-rep="${i}">
+      <label>Наблюдение<span class="datebox"><span>${fmtDate(x.date)}</span><input data-act="rdate" type="date" value="${esc(x.date||'')}"></span></label>
+      <textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(x.note||'')}</textarea>
+      <div class="audios">${(x.audio||[]).map(audHtml).join('')}</div>
+      ${canRec?'<button type="button" data-act="rec" aria-pressed="false">● Запись</button>':'<span class="status">Голосовые заметки записываются в установленном приложении.</span>'}
+      <button type="button" data-act="clrnote">Очистить заметку</button><button type="button" data-act="rdel">Удалить наблюдение</button>
+      <span class="status" role="status"></span></div>`}).join('')}
+    <button type="button" data-act="radd">+ Наблюдение${reps.length?` · уже ${reps.length}`:''}</button></div>`}
 // ---------- Голос → текст: Whisper прямо в приложении, в фоновом потоке, без сторонних программ ----------
 // Модель скачивается один раз при первой расшифровке (библиотека сама хранит её в кэше браузера «transformers-cache»),
 // дальше работает без сети. Библиотеку и её WASM кэширует sw.js. q8 — сжатые веса: base ≈77 МБ, small ≈249 МБ
@@ -870,8 +894,8 @@ async function transcribe(btn,card,box){
       files[d.file]=d; const v=Object.values(files), p=v.reduce((a,x)=>a+x.loaded,0)/v.reduce((a,x)=>a+x.total,0);
       st.textContent=`Скачиваю модель распознавания: ${Math.round(p*100)}% — только в первый раз, ${key=='best'?'≈250':'≈80'} МБ.`});
     if(!text){st.textContent='Речь в записи не распознана.';return}
-    const ta=box.querySelector('[data-act=note]'), r=rec(card.dataset.id,'visual');
-    r.note=(r.note?r.note.trimEnd()+'\n':'')+text; ta.value=r.note; logChanged(card);
+    const ta=box.querySelector('[data-act=note]'), {rep}=repOf(card,btn); if(!rep) return; // текст — в заметку того же наблюдения
+    rep.note=(rep.note?rep.note.trimEnd()+'\n':'')+text; ta.value=rep.note; logChanged(card);
     st.textContent='Текст добавлен в заметку — его можно поправить.';
   }catch(e){st.textContent=navigator.onLine?'Не удалось расшифровать: '+e.message:'Модель распознавания ещё не скачана. Подключитесь к интернету один раз и нажмите «В текст» снова.'}
   finally{btn.disabled=false}
@@ -882,17 +906,20 @@ async function toggleRec(btn,card,box){
   const st=box.querySelector('[role=status]'); let stream;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}
   catch{st.textContent='Нет доступа к микрофону. Разрешите его для приложения в настройках Android.';return}
-  const mr=new MediaRecorder(stream), chunks=[], t0=Date.now(), id=card.dataset.id;
+  const mr=new MediaRecorder(stream), chunks=[], t0=Date.now(), id=card.dataset.id, ri=+btn.closest('[data-rep]').dataset.rep; // запись — в это наблюдение
   const tick=setInterval(()=>{for(const b of document.querySelectorAll('[data-act=rec][aria-pressed=true]')) b.textContent='■ Стоп '+mmss(Date.now()-t0)},500);
   mr.ondataavailable=ev=>{if(ev.data.size)chunks.push(ev.data)};
   mr.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop()); clearInterval(tick); recState=null;
     for(const b of document.querySelectorAll('[data-act=rec]')){b.textContent='● Запись'; b.setAttribute('aria-pressed',false)}
     const blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'}); if(!blob.size)return;
-    try{const aid=await photos.putLocal(blob), r=rec(id,'visual'); (r.audio||(r.audio=[])).push(aid);
+    try{const aid=await photos.putLocal(blob), r=rec(id,'visual');
+      if(!r.reports?.[ri]){(r.reports||(r.reports=[])).push({date:$('date').value,note:'',audio:[]}); syncDone(r)} // наблюдение успели удалить — заводим новое
+      const rep=r.reports[ri]||r.reports.at(-1); (rep.audio||(rep.audio=[])).push(aid);
       // карточку могли перерисовать, пока шла запись, — ищем её текущую копию
       const c=[...document.querySelectorAll('#list details')].find(d=>d.dataset.id==id&&d.querySelector('.log[data-kind=visual]'));
-      if(c){c.querySelector('.audios').insertAdjacentHTML('beforeend',audHtml(aid)); showImgs(c); logChanged(c)} else{saveLocal(); pushCloud()}
+      const a=c?.querySelector(`.rep[data-rep="${r.reports.indexOf(rep)}"] .audios`);
+      if(a){a.insertAdjacentHTML('beforeend',audHtml(aid)); showImgs(c); logChanged(c)} else{saveLocal(); pushCloud()}
     }catch{st.textContent='Не удалось сохранить запись.'}};
   mr.start(1000); recState={mr}; // порциями по секунде: если приложение выгрузят, большая часть записи уже будет в памяти
   btn.setAttribute('aria-pressed',true); btn.textContent='■ Стоп 0:00'; st.textContent='';
@@ -1062,7 +1089,7 @@ const now=new Date(); now.setHours(now.getHours()-12); // до полудня е
 $('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 $('city').value=saved.city??0; $('bortle').value=saved.bortle??4;
 for(const id of ['focal','sensor','aperture','tfocal','eps']) $(id).value=saved[id]??'';
-$('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('hideDone').checked=!!saved.hideDone;
+$('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
 $('magMin').value=saved.magMin??MAG_LO; $('magMax').value=saved.magMax??MAG_HI;
@@ -1268,7 +1295,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:$('eps').value,oiii:$('oiii').checked,asr:$('asr').value,hideDone:$('hideDone').checked,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:$('eps').value,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1320,15 +1347,19 @@ function render(){
   const exact=o=>!q?0:o.keys.includes(q)?3:o.names.includes(q)?2:o.names.some(x=>x.startsWith(q))?1:0;
   // план и журнал показывают всё отмеченное, даже невидимое этой ночью, по порядку времени наилучшей высоты
   const order=r=>r.h?r.tMax:9e15;
-  // «Скрывать снятое и просмотренное» убирает отмеченное только из рекомендаций
-  const hide=!mine&&!q&&$('hideDone').checked;
-  const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?!!log[o.id]?.[kind]?.done
-    :!(hide&&log[o.id]?.[kind]?.done)&&(q||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
+  // фильтр «снятое и просмотренное» действует только на рекомендации: «скрывать» или «только они» (быстрый обзор результатов)
+  const doneF=!mine&&!q?$('doneF').value:'', isDone=o=>!!log[o.id]?.[kind]?.done, doneOf=o=>log[o.id]?.[kind]?.done||'';
+  const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?isDone(o)
+    :(doneF=='hide'?!isDone(o):doneF=='only'?isDone(o):true)&&(q||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
+  // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
   const all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
-    .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)); // все подходящие по убыванию оценки
+    .filter(r=>q||mine||doneF=='only'||r.score>=5)
+    .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
   const rows=all.slice(0,q?30:mine?999:shown);
   const kindLists=lists.filter(l=>l.kind==kind);
-  $('list').innerHTML=rows.length?rows.map(r=>{const o=r.o;
+  $('list').innerHTML=rows.length?rows.map((r,ri)=>{const o=r.o;
+    // журнал: заголовок с датой перед первым объектом каждой ночи
+    const dh=mine=='done'&&!q&&(ri==0||doneOf(rows[ri-1].o)!=doneOf(o))?`<h2>${doneOf(o)?fmtDate(doneOf(o)):'Дата не указана'}</h2>`:'';
     const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
     const pts=alts.map((a,i)=>`${i},${(90-Math.max(0,a)).toFixed(1)}`).join(' ');
     // восход/заход — первое пересечение горизонта за сутки от полудня до полудня
@@ -1336,7 +1367,7 @@ function render(){
     const riseSet=[cross(true),cross(false)].filter(Boolean).join(', ')||(alts[0]>0?'не заходит':'не восходит');
     const e=log[o.id]?.[kind]||{};
     // нашли поиском один объект или точный номер — карточка сразу раскрыта, чтобы снимок был виден без лишнего нажатия
-    return `<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
+    return `${dh}<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
       <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
       <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
       <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
@@ -1356,13 +1387,13 @@ function render(){
       ${refImg(o,kind,fov,r.fill)}${kind=="photo"&&fov&&window.claude?frameHtml(o,fov,r.fill):""}
     </div><div class="log" data-kind="${kind}">
       <span class="lbl">В план:</span>${kindLists.map(l=>`<button type="button" data-act="list" data-list="${l.id}" aria-pressed="${l.ids.includes(o.id)}">${esc(l.name)}</button>`).join('')}
-      <button type="button" data-act="done" aria-pressed="${!!e.done}">${kind=='photo'?'Снято':'Просмотрено'}</button>
+      ${kind=='photo'?`<button type="button" data-act="done" aria-pressed="${!!e.done}">Снято</button>`:''}
       ${ratingHtml(e)}${similarHtml(o,kind,e,lat)}
-      ${kind=='photo'?photoLog(o,e):`<textarea data-act="note" rows="2" placeholder="Что удалось увидеть: детали, условия, окуляр…" aria-label="Заметка о наблюдении">${esc(e.note||'')}</textarea><button type="button" data-act="clrnote">Очистить заметку</button>`+audioLog(e)+shotImg(o)}
+      ${kind=='photo'?photoLog(o,e):repsHtml(e)+shotImg(o)}
     </div></details>`}).join('')
     :q?'<p class="empty">В каталоге такого объекта нет.</p>'
     :mine=='plan'?`<p class="empty">В списке «${esc(L.name)}» пока пусто. Откройте карточку объекта в рекомендациях или найдите его поиском и нажмите кнопку с названием списка.</p>`
-    :mine?`<p class="empty">Здесь пока пусто. Откройте карточку объекта и нажмите «${kind=='photo'?'Снято':'Просмотрено'}».</p>`
+    :mine?`<p class="empty">Здесь пока пусто. Откройте карточку объекта и нажмите «${kind=='photo'?'Снято':'+ Наблюдение'}».</p>`
     :`<p class="empty">Подходящих объектов нет${kind=='visual'?': мешает засветка или Луна, или слишком узкий диапазон блеска':''}${types.size?'. Попробуйте выбрать другие типы объектов':''}.</p>`;
   // «Ещё» — следующие 15 рекомендаций по оценке
   if(!q&&!mine&&all.length>rows.length) $('list').insertAdjacentHTML('beforeend',`<button type="button" class="more" data-act="more">Ещё ${Math.min(15,all.length-rows.length)} (осталось ${all.length-rows.length})</button>`);
@@ -1379,7 +1410,7 @@ $('geo').onclick=()=>{const st=$('geoSt');
     e=>{st.textContent=e.code==1?'Доступ к геопозиции запрещён — разрешите его для приложения в настройках телефона.':'Не удалось определить местоположение. Выйдите на открытое место и попробуйте ещё раз.'},
     {enableHighAccuracy:false,timeout:20000,maximumAge:6e5})};
 for(const id of ['lat','lon']) $(id).oninput=()=>{$('city').value=-1;render()};
-$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('hideDone').onchange=$('aperture').oninput=$('q').oninput=$('tfocal').oninput=$('eps').oninput=render;
+$('date').onchange=$('bortle').onchange=$('oiii').onchange=$('doneF').onchange=$('aperture').oninput=$('q').oninput=$('tfocal').oninput=$('eps').oninput=render;
 // Смарт-телескоп — это просто готовая пара «фокусное + сенсор»; ручная правка любого из них сбрасывает выбор модели
 const syncScope=()=>{$('scope').value=`${$('focal').value}|${$('sensor').value}`; if($('scope').selectedIndex<0)$('scope').value=''};
 $('scope').onchange=()=>{const [f,s]=$('scope').value.split('|'); if(f){$('focal').value=f;$('sensor').value=s} render()};
@@ -1391,7 +1422,7 @@ $('gear').onclick=()=>showSetup($('setup').hidden);
 $('setupDone').onclick=()=>{showSetup(false); window.scrollTo({top:0,behavior:'smooth'})};
 // Отметки и заметки правят карточку на месте, без перерисовки списка: иначе раскрытая карточка схлопнется, а поле потеряет фокус
 function logChanged(card){const id=card.dataset.id, e=log[id];
-  if(e.visual?.audio&&!e.visual.audio.length) delete e.visual.audio;
+  if(e.visual&&!e.visual.reports?.length){delete e.visual.reports; delete e.visual.done} // последнее наблюдение удалили
   for(const k of ['photo','visual']) if(e[k]&&!Object.values(e[k]).some(Boolean)) delete e[k];
   if(!e.photo&&!e.visual) delete log[id];
   card.querySelector('.marks').textContent=marks(id);
@@ -1403,6 +1434,25 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
   if(act=='list'){const l=lists.find(x=>x.id==b.dataset.list); if(!l)return; const id=card.dataset.id;
     l.ids=l.ids.includes(id)?l.ids.filter(x=>x!=id):[...l.ids,id]; b.setAttribute('aria-pressed',l.ids.includes(id));
     card.querySelector('.marks').textContent=marks(id); saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800); return}
+  // наблюдения в визуале: добавить, удалить, очистить заметку, записи — всё внутри своего наблюдения
+  if(kind=='visual'&&['radd','rdel','clrnote','unaud','rec','stt'].includes(act)){
+    const {r,i,rep}=repOf(card,b), refresh=()=>{box.querySelector('.repwrap').outerHTML=repsHtml(r); showImgs(box)};
+    if(act=='rec'){toggleRec(b,card,b.closest('.rep'));return}
+    if(act=='stt'){transcribe(b,card,b.closest('.rep'));return}
+    if(act=='radd'){(r.reports||(r.reports=[])).push({date:$('date').value,note:'',audio:[]}); syncDone(r); refresh();
+      box.querySelector(`.rep[data-rep="${r.reports.length-1}"] textarea`)?.focus()}
+    else if(!rep) return;
+    else if(act=='rdel'){ // вместе с наблюдением удаляются его голосовые записи — в два нажатия
+      if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?';setTimeout(()=>b.textContent='Удалить наблюдение',3000);return}
+      (rep.audio||[]).forEach(photos.del); r.reports.splice(i,1); syncDone(r); refresh()}
+    else if(act=='clrnote'){
+      if(!rep.note){b.closest('.rep').querySelector('textarea').value='';return}
+      if(b.textContent!='Точно очистить?'){b.textContent='Точно очистить?';setTimeout(()=>b.textContent='Очистить заметку',3000);return}
+      b.textContent='Очистить заметку'; rep.note=''; b.closest('.rep').querySelector('textarea').value=''}
+    else if(act=='unaud'){
+      if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?';setTimeout(()=>b.textContent='Удалить',3000);return}
+      photos.del(b.dataset.id); rep.audio=(rep.audio||[]).filter(x=>x!=b.dataset.id); b.closest('.aud').remove()}
+    logChanged(card); return}
   const r=rec(card.dataset.id,kind);
   if(act=='rec'){toggleRec(b,card,box);return}
   if(act=='stt'){transcribe(b,card,box);return}
@@ -1426,8 +1476,11 @@ $('list').oninput=ev=>{const t=ev.target, act=t.dataset.act;
     for(const p of $('list').querySelectorAll('polygon[data-geo]')) p.setAttribute('points',framePts(JSON.parse(p.dataset.geo),camRot).map(q=>q.map(v=>v.toFixed(2)).join(',')).join(' '));
     for(const r of $('list').querySelectorAll('[data-act=rot]')){r.value=camRot; r.nextElementSibling.textContent=camRot+'°'}
     return}
-  if(!['exp','gear','note','sessions','date','rating'].includes(act))return;
+  if(!['exp','gear','note','sessions','date','rating','rdate'].includes(act))return;
   const card=t.closest('details'), box=t.closest('.log');
+  if(box.dataset.kind=='visual'&&(act=='note'||act=='rdate')){const {r,rep}=repOf(card,t); if(!rep)return;
+    if(act=='note') rep.note=t.value; else {rep.date=t.value; syncDone(r)}
+    logChanged(card); return}
   if(act=='rating'){const v=+t.value, kind=box.dataset.kind, e=rec(card.dataset.id,kind); e.rating=v||undefined;
     t.nextElementSibling.textContent=v?fmtR(v)+' из 10':'нет';
     // при оценке выше 8 сразу показываем похожие объекты
