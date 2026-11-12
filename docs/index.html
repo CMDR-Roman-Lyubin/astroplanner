@@ -128,8 +128,6 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .mapctl button[data-z=in],.mapctl button[data-z=out]{font-size:17px;line-height:1;padding:4px 13px}
 .mapctl span{font-size:13px;color:var(--muted)}
 #map .goto{padding:2px 8px;color:var(--accent)}
-#map .dssopt{flex-direction:row;align-items:flex-start;gap:8px;font-size:13px;color:var(--muted)}
-#map .dssopt input{flex:none;margin:1px 0}
 #map ul{list-style:none;padding-left:0}
 #map li{margin:4px 0}
 /* на весь экран: слой поверх страницы (не системный полноэкранный режим — иначе красный ночной фильтр его не накрывает) */
@@ -1028,24 +1026,11 @@ function planetsAt(d){const T=d/36525, g=helio(EARTH,T);
   return PLANETS.map(([name,col,el,rate])=>{const p=helio([el,rate],T), x=p[0]-g[0], y=p[1]-g[1], z=p[2]-g[2];
     return {name,col,...eq(Math.atan2(y,x)/R,Math.atan2(z,Math.hypot(x,y))/R,d)}})}
 
-// Снимок неба вокруг объекта для поиска через окуляр: DSS2 (NASA SkyView), 2,5° × 2,5°. Скачивается заранее — при добавлении объекта
-// в список, пока есть интернет, — и хранится в кэше приложения, поэтому в поле работает без сети
-const DSS_DEG=2.5, DSS_PIX=900;
-const dssField=o=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DSS2+Red&Position=${o.ra.toFixed(4)},${o.dec.toFixed(4)}&Size=${DSS_DEG}&Pixels=${DSS_PIX}&Return=JPEG`;
-const prefetched=new Set();
-// по одному: на несколько запросов сразу SkyView иногда отвечает ошибкой. Загрузка через картинку — так видно, что пришёл снимок, а не ошибка
-let fieldQueue=Promise.resolve();
-const prefetchFields=ids=>{if(window.claude||!navigator.onLine||!dssOn)return; for(const id of ids){const o=BYID[id]; if(!o||prefetched.has(id))continue; prefetched.add(id);
-  fieldQueue=fieldQueue.then(()=>new Promise(res=>{const i=new Image(), url=dssField(o), t=setTimeout(()=>{i.src='';fail()},60000);
-    const fail=()=>{clearTimeout(t); prefetched.delete(id); dropCached(url); res()};
-    i.onload=()=>{clearTimeout(t); res()}; i.onerror=fail; i.src=url}))}};
 
 // ---------- Карта неба для выбранного списка (только визуал) ----------
 // Вид снизу вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближение до ×60 (поле ~3°) — чтобы найти объект в искателе:
 // при приближении появляются звёзды слабее (до 7,5ᵐ) и подписи объектов основного списка
 let mapIdx=null, mapKey='', mapView={z:1,cx:200,cy:200}, mapFull=false;
-// снимки DSS вокруг объектов плана — по желанию (галочка на карте), по умолчанию выключены: ~200 КБ на объект
-let dssOn=false; try{dssOn=localStorage.getItem('dss')=='1'}catch{}
 let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,7.5)}catch{}
 const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
 let mapK=1; // высота области карты к ширине: 1 — квадрат, на весь экран — пропорции экрана
@@ -1066,18 +1051,17 @@ function drawMap(n,lat,hm,L){
   const z=mapView.z, half=200/z, hh=half*mapK, vx=mapView.cx-half, vy=mapView.cy-hh, u=1/z; // u — единица карты, которая на экране не меняется при приближении
   const vis=p=>p&&p[0]>vx-10*u&&p[0]<vx+2*half+10*u&&p[1]>vy-10*u&&p[1]<vy+2*hh+10*u;
   const f1=v=>v.toFixed(z>8?2:1), ns='vector-effect="non-scaling-stroke"';
-  // предел блеска: при приближении растёт сам (×1 — до 5ᵐ, ×5 и ближе — до 7,5ᵐ), ползунок ограничивает его сверху
-  const autoLim=Math.min(7.5,5+1.5*Math.log2(z)), magLim=Math.min(starLim,autoLim);
+  // предел блеска: при приближении растёт сам (×1 — до 4,5ᵐ, ×7 и ближе — до 7,5ᵐ), ползунок ограничивает его сверху
+  const autoLim=Math.min(7.5,4.5+1.5*Math.log2(z)), magLim=Math.min(starLim,autoLim);
   const objs=CATALOG.filter(o=>L.ids.includes(o.id)).map(o=>({o,p:P(o.ra,o.dec)}));
   let svg=`<circle cx="200" cy="200" r="${R0}" fill="var(--night)" stroke="var(--line)" ${ns}/>`
     +[30,60].map(h=>`<circle cx="200" cy="200" r="${R0*(90-h)/90}" fill="none" stroke="var(--line)" stroke-dasharray="3 4" ${ns}/>`).join('')
-    +[['С',200,6],['Ю',200,398],['В',4,203],['З',396,203]].map(([t,X,Y])=>`<text x="${X}" y="${Y}" text-anchor="middle" font-size="${11*u}" fill="var(--muted)">${t}</text>`).join('')
-    +'<!--fields-->'; // сюда встают снимки неба — под звёздами и линиями
+    +[['С',200,6],['Ю',200,398],['В',4,203],['З',396,203]].map(([t,X,Y])=>`<text x="${X}" y="${Y}" text-anchor="middle" font-size="${11*u}" fill="var(--muted)">${t}</text>`).join('');
   if(STARMAP){
     for(const l of STARMAP.lines){let d='',pen=false; // часть линии под горизонтом обрываем
       for(let i=0;i<l.length;i+=2){const p=P(l[i],l[i+1]); if(p){d+=(pen?'L':'M')+f1(p[0])+','+f1(p[1]); pen=true} else pen=false}
-      if(d) svg+=`<path d="${d}" fill="none" stroke="#5a6b96" stroke-opacity=".55" stroke-width=".8" ${ns}/>`}
-    for(const [ra,dec,m] of STARMAP.stars){if(m>magLim)continue; const p=P(ra,dec); if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${(Math.max(.5,3.2-.4*m)*u).toFixed(3)}" fill="#dfe5f2"/>`}
+      if(d) svg+=`<path d="${d}" fill="none" stroke="#6c7fb0" stroke-opacity=".75" stroke-width=".9" ${ns}/>`}
+    for(const [ra,dec,m] of STARMAP.stars){if(m>magLim)continue; const p=P(ra,dec); if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${(Math.max(.35,2.3-.36*m)*u).toFixed(3)}" fill="#dfe5f2"/>`}
     if(z<8) for(const [nm,ra,dec] of STARMAP.names){const p=P(ra,dec); if(vis(p)) svg+=`<text x="${f1(p[0])}" y="${f1(p[1])}" text-anchor="middle" font-size="${8*u}" fill="#7f8db3" opacity=".8">${esc(nm)}</text>`}
   }
   // при приближении — остальные объекты основного списка блёклыми кружками, чтобы было от чего «прыгать»
@@ -1087,22 +1071,13 @@ function drawMap(n,lat,hm,L){
     svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.6*u}" fill="${pl.col}"/><text x="${f1(p[0]+6*u)}" y="${f1(p[1]+4*u)}" font-size="${10*u}" fill="${pl.col}">${pl.name}</text>`}
   const mo=moonPos(dd), mp=P(mo.ra,mo.dec);
   if(vis(mp)) svg+=`<g transform="translate(${f1(mp[0])},${f1(mp[1])}) scale(${(.38*u).toFixed(4)})">${moonPhaseSvg(moonIllum(dd),moonIllum(dd+.25)>moonIllum(dd))}</g><text x="${f1(mp[0]+10*u)}" y="${f1(mp[1]+4*u)}" font-size="${10*u}" fill="var(--moon)">Луна</text>`;
-  // окулярное поле: настоящий снимок неба (звёзды гораздо слабее 14ᵐ) вокруг объектов плана, повёрнутый и отмасштабированный под карту.
-  // Ставим его по трём точкам — центр, на 0,5° к северу и к востоку, — поэтому поворот, масштаб и зеркальность совпадают с картой
-  let fields='';
-  if(z>=8&&!window.claude&&dssOn) for(const {o,p} of objs){if(!vis(p))continue;
-    const dl=.5, pn=P(o.ra,o.dec+dl), pe=P(o.ra+dl/Math.max(cos(o.dec),.05),o.dec); if(!pn||!pe)continue;
-    const W=DSS_PIX, sc=DSS_DEG/W, Nx=(pn[0]-p[0])/dl, Ny=(pn[1]-p[1])/dl, Ex=(pe[0]-p[0])/dl, Ey=(pe[1]-p[1])/dl;
-    const a=-Ex*sc, b=-Ey*sc, c=-Nx*sc, d=-Ny*sc, e=p[0]-(a+c)*W/2, ff=p[1]-(b+d)*W/2; // пиксель (x вправо = запад, y вниз = юг) → карта
-    fields+=`<image href="${dssField(o)}" width="${W}" height="${W}" transform="matrix(${[a,b,c,d,e,ff].map(v=>v.toFixed(5)).join(' ')})" opacity=".95" style="mix-blend-mode:screen"/>`}
-  svg=svg.replace('<!--fields-->',fields);
   for(const {o,p} of objs) if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${6*u}" fill="none" stroke="var(--accent)" stroke-width="1.8" ${ns}/>`
     +`<text x="${f1(p[0]+8*u)}" y="${f1(p[1]-7*u)}" font-size="${11*u}" font-weight="600" fill="var(--accent)">${esc(o.id)}</text>`;
   const up=objs.filter(q=>q.p).sort((a,b)=>b.p[2]-a.p[2]), down=objs.filter(q=>!q.p);
   const listHtml=L.ids.length?`<ul>${up.map(({o,p})=>`<li><button type="button" class="goto" data-id="${esc(o.id)}">${esc(o.id)}${o.name?' · '+esc(o.name):''}</button> — высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]} (азимут ${Math.round(p[3])}°)</li>`).join('')}
       ${down.map(({o})=>`<li>${esc(o.id)} — под горизонтом</li>`).join('')}</ul>`:'<p class="empty">В списке пока нет объектов — добавьте их кнопкой с названием списка в карточке объекта.</p>';
   const vb=`${vx.toFixed(2)} ${vy.toFixed(2)} ${(2*half).toFixed(2)} ${(2*hh).toFixed(2)}`, zTxt=z>1.05?`×${z<10?z.toFixed(1).replace('.',','):Math.round(z)}, поле ≈${fmtR(+(180*half/R0).toFixed(z>10?1:0))}°`:'всё небо';
-  mapArgs=[n,lat,hm,L]; prefetchFields(L.ids);
+  mapArgs=[n,lat,hm,L];
   // при движении ползунка и масштабировании меняем только небо, время и список — ползунок не пересоздаём, иначе палец «соскакивает»
   const t=$('mapT');
   const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`;
@@ -1111,7 +1086,6 @@ function drawMap(n,lat,hm,L){
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full">На весь экран</button></div>
-    ${window.claude?'':`<label class="dssopt"><input type="checkbox" id="dss"${dssOn?' checked':''}> Снимки неба DSS вокруг объектов плана — звёзды слабее 14ᵐ для поиска через окуляр (~200 КБ на объект, скачиваются заранее, пока есть интернет)</label>`}
     <label><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
@@ -1285,7 +1259,7 @@ $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)retu
   const card=b.closest('details'), box=b.closest('.log'), kind=box.dataset.kind, act=b.dataset.act;
   if(act=='find'){$('q').value=b.dataset.id; tab='rec'; render(); $('q').scrollIntoView({block:'start'}); return} // похожий объект — открываем его карточку
   if(act=='list'){const l=lists.find(x=>x.id==b.dataset.list); if(!l)return; const id=card.dataset.id;
-    l.ids=l.ids.includes(id)?l.ids.filter(x=>x!=id):[...l.ids,id]; b.setAttribute('aria-pressed',l.ids.includes(id)); if(l.kind=='visual') prefetchFields([id]);
+    l.ids=l.ids.includes(id)?l.ids.filter(x=>x!=id):[...l.ids,id]; b.setAttribute('aria-pressed',l.ids.includes(id));
     card.querySelector('.marks').textContent=marks(id); saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800); return}
   const r=rec(card.dataset.id,kind);
   if(act=='rec'){toggleRec(b,card,box);return}
@@ -1411,8 +1385,6 @@ async function voiceSearch(){
 $('qmic').hidden=!canRec; $('qmic').onclick=voiceSearch;
 $('q').addEventListener('input',()=>{$('qst').hidden=true});
 // ползунок времени: не чаще кадра экрана и без полной перерисовки страницы
-$('map').addEventListener('change',e=>{if(e.target.id!='dss')return; dssOn=e.target.checked; try{localStorage.setItem('dss',dssOn?'1':'0')}catch{}
-  if(dssOn) prefetchFields(lists.filter(l=>l.kind=='visual').flatMap(l=>l.ids)); mapRedraw()});
 $('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}
   else if(e.target.id=='starLim'){starLim=+e.target.value; try{localStorage.setItem('starLim',starLim)}catch{} mapRedraw()}};
 render();
@@ -1468,5 +1440,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 24 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 25 от 12.11.2026";v.hidden=false}</script>
 </body></html>
