@@ -81,8 +81,8 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .ref img{display:block;width:100%;max-width:360px;aspect-ratio:1;background:var(--night);border-radius:6px}
 .ref figcaption{margin-top:4px;font-size:12px;color:var(--muted)}
 .audios{flex-basis:100%;display:flex;flex-direction:column;gap:6px}
-.audios .aud{display:flex;align-items:center;gap:6px}
-.audios audio{flex:1;min-width:0;height:36px}
+.audios .aud{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.audios audio{flex:1 1 100%;min-width:0;height:36px} /* плеер на всю ширину, кнопки записи — строкой под ним */
 .log button[data-act=rec][aria-pressed=true]{color:#fff;background:#b3261e;border-color:#b3261e}
 .catsel{grid-column:1/-1;border:1px solid var(--line);border-radius:6px;margin:0;padding:6px 10px 10px;min-width:0}
 .catsel legend{font-size:12px;color:var(--muted);padding:0 4px}
@@ -106,7 +106,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .listedit button:disabled{opacity:.4;cursor:default}
 .log .lbl{color:var(--muted);align-self:center}
 .score{grid-row:span 4}
-.rating{display:flex;align-items:center;gap:8px;flex-basis:100%;font-size:13px;color:var(--muted)}
+.log .rating{display:flex;flex-direction:row;align-items:center;gap:8px;flex:1 1 100%;font-size:13px;color:var(--muted)}
 .rating input{flex:1;padding:0;border:0;background:none;accent-color:var(--accent)}
 .rating output{min-width:3.5em;color:var(--fg);font-variant-numeric:tabular-nums}
 .similar{flex-basis:100%;font-size:13px;color:var(--muted)}
