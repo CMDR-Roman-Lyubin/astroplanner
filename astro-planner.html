@@ -16,7 +16,22 @@ body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--font);
 main{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 h1{font-size:22px;margin:0;font-weight:600;letter-spacing:.01em}
 .sub{color:var(--muted);margin:0;font-size:13px}
-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+form{display:flex;flex-direction:column;gap:8px}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:4px 0 10px}
+.sgrp{background:none;border:0;border-bottom:1px solid var(--line);border-radius:0}
+.sgrp>summary{display:flex;justify-content:space-between;padding:10px 2px;font-size:14px;font-weight:600;color:var(--fg)}
+.sgrp>summary::after,.filters>summary::after{content:"▾";color:var(--muted);transition:transform .15s}
+.sgrp[open]>summary::after,.filters[open]>summary::after{transform:rotate(180deg)}
+.filters{background:var(--card);border:1px solid var(--line);border-radius:8px}
+.filters>summary{display:flex;justify-content:space-between;gap:8px;padding:9px 12px;font-size:13px;color:var(--muted)}
+.filters[open]{padding-bottom:10px}.filters>:not(summary){margin:4px 12px 0}
+.sec{flex-basis:100%;margin:14px 0 6px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.chart>.sec:first-child{margin-top:0}
+.chart p.night{font-size:13px;color:var(--fg)}
+summary .name small{display:block;margin-left:0}
+.tabs button{flex:1 1 auto;padding:8px 4px;font-size:14px}
+.score{min-width:2.4em;text-align:center;border-radius:999px;padding:2px 8px;font-size:14px}
+.score.hi{color:var(--bg);background:var(--accent)}.score.mid{border:1px solid var(--accent)}.score.lo{color:var(--muted);border:1px solid var(--line)}
 label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
 input,select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-width:0;width:100%;box-sizing:border-box}
 input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--accent)}
@@ -40,7 +55,7 @@ input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--acce
 .log textarea{flex-basis:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 8px;box-sizing:border-box;resize:vertical}
 .name small.marks{color:var(--accent)}
 .tabs{overflow-x:auto}
-.tabs button{white-space:nowrap;padding:8px 9px}
+.tabs button{white-space:nowrap}
 /* настройки сворачиваются: на телефоне первым экраном должны быть поиск и список, а не форма */
 /* настройки — отдельная панель за шестерёнкой; строка «место · дата» над ней тоже её открывает */
 #setup{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:12px}
@@ -91,6 +106,14 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .log .proj label{flex:none}.log .pnight label{display:flex;flex-direction:row;align-items:center;gap:4px;white-space:nowrap}.pnight input[type=number]{width:4.5em}
 .pnight button,.proj [data-act=nadd]{font:inherit;font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
 .progbox{margin:6px 0}.progbox label{display:flex;flex-direction:column;gap:4px}#progTxt progress{display:block;width:100%;height:6px;margin:4px 0;accent-color:var(--accent)}
+#hzEdit,#hzLive{display:block;width:100%;height:60px;border-radius:6px;touch-action:none;cursor:crosshair}
+.hzaxis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:2px 0 4px}
+#hzRec{position:fixed;inset:0;z-index:120;background:#000;display:flex;flex-direction:column;justify-content:flex-end}
+#hzVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hzcross{position:absolute;left:50%;top:40%;width:64px;height:64px;margin:-32px 0 0 -32px;border:2px solid var(--accent);border-radius:50%;pointer-events:none}
+.hzcross::before,.hzcross::after{content:"";position:absolute;background:var(--accent)}.hzcross::before{left:-40px;right:-40px;top:30px;height:2px}.hzcross::after{top:-40px;bottom:-40px;left:30px;width:2px}
+.hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.hzpanel p{margin:4px 0}
 .magtip{font-size:13px;color:var(--fg)}
 .flipsel{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .ref img[src*="skyview"],image[href*="skyview"]{filter:contrast(1.15) brightness(.92)}
@@ -131,7 +154,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .listedit button{color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
 .listedit button:disabled{opacity:.4;cursor:default}
 .log .lbl{color:var(--muted);align-self:center}
-.score{grid-row:span 4}
+.score{grid-row:span 3}
 .log .rating{display:flex;flex-direction:row;align-items:center;gap:8px;flex:1 1 100%;font-size:13px;color:var(--muted)}
 .rating input{flex:1;padding:0;border:0;background:none;accent-color:var(--accent)}
 .rating output{min-width:3.5em;color:var(--fg);font-variant-numeric:tabular-nums}
@@ -186,10 +209,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
 
 <main>
   <header>
-    <div>
     <h1>Тёмная ночь</h1>
-    <p class="sub">Объекты дальнего космоса, которые лучше всего снимать и наблюдать в выбранную ночь.</p>
-    </div>
     <div class="hbtns">
       <button type="button" id="red" aria-pressed="false" title="Ночной режим: весь экран в оттенках красного, чтобы не сбивать ночное зрение">Красный</button>
       <button type="button" id="fly" aria-pressed="false" title="Анимация фона. У телескопа лучше выключить, чтобы не сбивать ночное зрение">Полёт</button>
@@ -205,20 +225,29 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
   <p class="where" id="setupSum">Место и дата</p>
   <section id="setup" hidden aria-label="Настройки">
   <form id="f">
-    <h3 class="grp">Место и дата</h3>
+    <details class="sgrp" open><summary>Место и дата</summary><div class="sgrid">
     <label>Город<select id="city"></select></label>
     <label>Широта, °<input id="lat" type="number" step="0.01" min="-90" max="90"></label>
     <label>Долгота, °<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
     <div class="geo"><button type="button" class="more" id="geo">📍 Координаты по геопозиции</button><span class="sub" id="geoSt" role="status"></span></div>
     <label>Вечер даты<span class="datebox"><span></span><input id="date" type="date"></span></label>
     <label>Засветка (Бортль)<select id="bortle"></select></label>
+    <fieldset class="catsel" id="hzsel"><legend>Мой горизонт — деревья и дома на этом месте</legend>
+      <svg id="hzEdit" viewBox="0 0 360 60" preserveAspectRatio="none" role="img" aria-label="Высота препятствий по сторонам горизонта — проведите пальцем, чтобы нарисовать"></svg>
+      <div class="hzaxis"><span>С</span><span>В</span><span>Ю</span><span>З</span><span>С</span></div>
+      <div class="catbtns"><button type="button" id="hzRecBtn">🧭 Записать по компасу</button><button type="button" id="hzClear">Очистить</button></div>
+      <p class="sub" id="hzSt"></p>
+    </fieldset>
+    </div></details>
+    <details class="sgrp"><summary>Мои сетапы</summary><div class="sgrid">
     <fieldset class="catsel" id="setupsel"><legend>Мои сетапы — оборудование одним нажатием</legend>
       <div class="cats" id="setupList"></div>
       <div class="epadd"><input id="setupName" maxlength="40" placeholder="название, например «Доб 300 + ASI533»" aria-label="Название сетапа">
         <button type="button" id="setupSave">Сохранить текущий</button></div>
       <p class="sub">Сохраняется всё оборудование ниже: фокусное и сенсор для съёмки, апертура, фокусное телескопа, окуляры и фильтр OIII. Название сетапа попадёт в журнал съёмки.</p>
     </fieldset>
-    <h3 class="grp">Астрофото</h3>
+    </div></details>
+    <details class="sgrp"><summary>Астрофото</summary><div class="sgrid">
     <label>Смарт-телескоп<select id="scope">
       <option value="">свой сетап</option>
       <option value="250|5.6x3.2">ZWO Seestar S50</option>
@@ -246,7 +275,8 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="7x7">IMX676 7,0×7,0</option>
       <option value="5.6x3.2">IMX462/662 5,6×3,2</option>
     </select></label>
-    <h3 class="grp">Визуал</h3>
+    </div></details>
+    <details class="sgrp"><summary>Визуал</summary><div class="sgrid">
     <label>Апертура телескопа, мм<input id="aperture" type="number" min="50" step="5" placeholder="не задана"></label>
     <label>Фокусное телескопа, мм<input id="tfocal" type="number" min="100" step="10" placeholder="например, 1500"></label>
     <fieldset class="catsel" id="epsel"><legend>Мои окуляры — круги поля на карте неба</legend>
@@ -262,7 +292,8 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="fast">Быстрая (модель ≈80 МБ)</option>
       <option value="best">Точная (модель ≈250 МБ)</option>
     </select></label>
-    <h3 class="grp">Рекомендации</h3>
+    </div></details>
+    <details class="sgrp"><summary>Рекомендации</summary><div class="sgrid">
     <label>Снятое и просмотренное в рекомендациях<select id="doneF">
       <option value="">показывать вместе со всем</option>
       <option value="hide">скрывать</option>
@@ -278,6 +309,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       </div>
       <p class="sub">Поиск, план и журнал работают по всем каталогам. Только северное небо — склонение от −30°.</p>
     </fieldset>
+    </div></details>
   </form>
   <button type="button" class="more" id="setupDone">Готово</button>
   </section>
@@ -293,7 +325,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <button role="tab" id="tab-rec" aria-selected="true">Рекомендации</button>
     <button role="tab" id="tab-plan" aria-selected="false">Планы</button>
     <button role="tab" id="tab-done" aria-selected="false">Журнал</button>
-    <button role="tab" id="tab-map" aria-selected="false">Карта неба</button>
+    <button role="tab" id="tab-map" aria-selected="false">Карта</button>
   </div>
   <div class="listbar" id="listBar" hidden>
     <div class="cats" id="lists" role="group" aria-label="Списки планов"></div>
@@ -309,6 +341,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <button type="button" id="qmic" aria-pressed="false" aria-label="Голосовой поиск" title="Голосовой поиск: нажмите, назовите объект, нажмите ещё раз" hidden>🎤</button>
   </div>
   <p class="sub" id="qst" role="status" hidden></p>
+  <details class="filters" id="filtBox"><summary id="filtSum">Фильтры</summary>
   <div class="cats" id="cats" role="group" aria-label="Типы объектов"></div>
   <div class="progbox" id="progBox" hidden>
     <label>Программа наблюдений<select id="prog"><option value="">нет — обычные рекомендации</option></select></label>
@@ -319,8 +352,15 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <label>от<input id="magMin" type="range" min="-1" max="16" step="0.5" aria-label="Самый яркий блеск в рекомендациях"></label>
     <label>до<input id="magMax" type="range" min="-1" max="16" step="0.5" aria-label="Самый слабый блеск в рекомендациях"></label>
   </div>
+  </details>
   <div class="list" id="list"></div>
   <div id="map" hidden></div>
+  <div id="hzRec" hidden><video id="hzVideo" autoplay playsinline muted></video><div class="hzcross" aria-hidden="true"></div>
+    <div class="hzpanel"><p id="hzRead" role="status">Жду компас…</p>
+      <svg id="hzLive" viewBox="0 0 360 60" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="hzaxis"><span>С</span><span>В</span><span>Ю</span><span>З</span><span>С</span></div>
+      <p class="sub">Держите телефон вертикально, наведите перекрестие на линию крыш и деревьев и медленно повернитесь кругом. Где препятствий нет — ведите по самому горизонту. Вдали от машин и металла: они сбивают компас.</p>
+      <div class="catbtns"><button type="button" id="hzDone">Готово</button><button type="button" id="hzCancel">Отмена</button></div></div></div>
   <p class="sub" id="sync">План, журнал и снимки хранятся на этом устройстве.</p>
   <p class="sub">Оценка 0–100 — эвристика: часы над горизонтом в тёмное время, высота, Луна, размер (фото) или поверхностная яркость против засветки (визуал). Координаты каталога округлены до ~0,5°.</p>
   <p class="sub" id="ver" hidden></p><!-- номер версии — из version.js, его пишет build-pwa.js -->
@@ -678,10 +718,12 @@ function night(lat,lon,dateStr){
 function stats(o,n,minAlt){
   // та же формула, что alt(), но синус высоты сравниваем без asin и множители считаем один раз — каталог из 14 тыс. объектов
   const A=sin(n.lat)*sin(o.dec), B=cos(n.lat)*cos(o.dec), lim=sin(minAlt);
+  // свой горизонт: выше порога, но ниже самого высокого препятствия — проверяем по азимуту
+  const hz=n.hz, hzTop=hz?sin(Math.max(minAlt,n.hzMax)):lim;
   let k=0,best=-2,tMax=0,from=0,to=0,moonUp=0;
   for(const x of n.dark){const s=A+B*Math.cos((x.L-o.ra)*R);
     if(s>best){best=s;tMax=x.t}
-    if(s>=lim){k++;from=from||x.t;to=x.t;if(x.moon>0)moonUp++}}
+    if(s>=lim&&(s>=hzTop||s>=sin(hzAt(hz,azOf(n.lat,x.L,o))))){k++;from=from||x.t;to=x.t;if(x.moon>0)moonUp++}}
   return {h:k*STEP/36e5,max:asin(best),tMax,from,to,moonFrac:k?moonUp/k:0,moonSep:sep(o,n.moon)};
 }
 const altTerm=max=>clamp((max-20)/50);
@@ -1223,6 +1265,75 @@ if(HAS_EXTRA){$('catsel').hidden=false;
   $('catList').onchange=e=>{catSets[mode][e.target.checked?'add':'delete'](e.target.value); shown=15; render()};
   $('catBtns').onclick=e=>{const p=e.target.dataset?.preset; if(!p)return; catSets[mode]=new Set(PRESETS[p]); shown=15; render()};
 }
+// ---------- Свой горизонт: высота препятствий по 72 направлениям (через 5° азимута) для каждого места ----------
+// Место — координаты с точностью 0,01° (~1 км). Учитывается в оценках («часы выше»), на графике высоты и на карте неба
+const HZN=72;
+let horizons={}; try{horizons=JSON.parse(localStorage.getItem('skyhz')||'{}')}catch{}
+const hzKey=()=>(+$('lat').value).toFixed(2)+','+(+$('lon').value).toFixed(2);
+const hzGet=()=>{const h=horizons[hzKey()]; return Array.isArray(h)&&h.length==HZN&&h.some(v=>v>0)?h:null};
+function hzSave(h){const k=hzKey(); if(h&&h.some(v=>v>.4)) horizons[k]=h.map(v=>Math.round(clamp(v,0,89)*10)/10); else delete horizons[k];
+  try{localStorage.setItem('skyhz',JSON.stringify(horizons))}catch{}}
+const hzAt=(h,az)=>{const x=(az%360+360)%360/5, i=Math.floor(x), f=x-i; return h[i%HZN]*(1-f)+h[(i+1)%HZN]*f};
+const azOf=(lat,L,o)=>{const H=(L-o.ra)*R; return (Math.atan2(-cos(o.dec)*Math.sin(H),sin(o.dec)*cos(lat)-cos(o.dec)*sin(lat)*Math.cos(H))/R+360)%360};
+const DIR16=['С','ССВ','СВ','ВСВ','В','ВЮВ','ЮВ','ЮЮВ','Ю','ЮЮЗ','ЮЗ','ЗЮЗ','З','ЗСЗ','СЗ','ССЗ'], dir16=az=>DIR16[Math.round(az/22.5)%16];
+// полоса «азимут 0–360° × высота 0–60°»: препятствия серым, cur — куда смотрит телефон
+function hzSvg(h,cur){const y=v=>(60-Math.min(v,60)).toFixed(1);
+  return `<rect width="360" height="60" fill="var(--night)"/>${[90,180,270].map(a=>`<line x1="${a}" x2="${a}" y1="0" y2="60" stroke="var(--line)" vector-effect="non-scaling-stroke"/>`).join('')}
+    <line x1="0" x2="360" y1="30" y2="30" stroke="var(--line)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+    <polygon points="0,60 ${h.map((v,i)=>`${i*5},${y(v)}`).join(' ')} 360,${y(h[0])} 360,60" fill="#59617a"/>`
+    +(cur?`<line x1="${cur[0].toFixed(1)}" x2="${cur[0].toFixed(1)}" y1="0" y2="60" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="${cur[0].toFixed(1)}" cy="${y(Math.max(0,cur[1]))}" r="2.5" fill="var(--accent)"/>`:'')}
+function drawHz(){const h=hzGet(), max=h?Math.max(...h):0;
+  $('hzEdit').innerHTML=hzSvg(h||Array(HZN).fill(0));
+  $('hzSt').textContent=h?`Записан для этого места: препятствия до ${Math.round(max)}° (${dir16(h.indexOf(max)*5)}). Учитывается в оценках, на графике высоты и на карте неба. Пунктир — 30°.`
+    :`Для этого места (${hzKey().replace(',','°, ')}°) не записан — объекты считаются видимыми от ${PHOTO_ALT}° на фото и ${VISUAL_ALT}° в визуале. Проведите пальцем по полосе, чтобы нарисовать препятствия, или запишите их по компасу.`}
+// рисование пальцем: азимут — по горизонтали, высота — по вертикали (полоса до 60°)
+{let edit=null, prev=null;
+  const at=e=>{const r=$('hzEdit').getBoundingClientRect(); return [clamp((e.clientX-r.left)/r.width)*360,clamp(1-(e.clientY-r.top)/r.height)*60]};
+  const put=([az,al])=>{const i=Math.round(az/5)%HZN, j=prev??i; // между соседними событиями заполняем пропущенные направления
+    for(let k=Math.min(i,j);k<=Math.max(i,j);k++) if(Math.abs(i-j)<HZN/2) edit[k]=al; prev=i; $('hzEdit').innerHTML=hzSvg(edit)};
+  $('hzEdit').onpointerdown=e=>{edit=(hzGet()||Array(HZN).fill(0)).slice(); prev=null; $('hzEdit').setPointerCapture(e.pointerId); put(at(e))};
+  $('hzEdit').onpointermove=e=>{if(edit) put(at(e))};
+  $('hzEdit').onpointerup=$('hzEdit').onpointercancel=()=>{if(!edit) return; hzSave(edit); edit=null; render()}}
+$('hzClear').onclick=e=>{const b=e.target; if(!hzGet()) return; if(b.textContent!='Точно очистить?'){b.textContent='Точно очистить?';setTimeout(()=>b.textContent='Очистить',3000);return}
+  b.textContent='Очистить'; hzSave(null); render()};
+// Запись по компасу: направление задней камеры из ориентации телефона (alpha — поворот к северу, beta — наклон, gamma — крен).
+// Вектор камеры в осях «восток, север, вверх» = −третий столбец матрицы Rz(α)·Rx(β)·Ry(γ)
+let hzRec=null;
+function camDir(a,b,g){const [ca,sa,cb,sb,cg,sg]=[cos(a),sin(a),cos(b),sin(b),cos(g),sin(g)];
+  const x=-ca*sg-sa*sb*cg, y=-sa*sg+ca*sb*cg, z=-cb*cg; return [(Math.atan2(x,y)/R+360)%360,asin(z)]}
+console.assert(Math.abs(camDir(0,90,0)[0]%360)<1e-6&&Math.abs(camDir(0,120,0)[1]-30)<1e-6&&Math.abs(camDir(90,90,0)[0]-270)<1e-6,'камера: север, 30° вверх, запад');
+function hzOrient(e){if(!hzRec||e.beta==null) return;
+  if(e.type=='deviceorientation'&&hzRec.abs) return; // на Android есть абсолютная — обычную (без севера) пропускаем
+  if(e.type=='deviceorientationabsolute') hzRec.abs=true;
+  const absolute=e.type=='deviceorientationabsolute'||e.absolute;
+  let [az,al]=camDir(e.alpha||0,e.beta,e.gamma||0);
+  if(e.webkitCompassHeading!=null) az=e.webkitCompassHeading; // iPhone: свой компас, отсчёт уже от севера
+  else if(!absolute){$('hzRead').textContent='Компас недоступен в этом браузере — нарисуйте горизонт пальцем в настройках.';return}
+  hzRec.cur=[az,al];
+  if(al>-5&&al<75){const i=Math.round(az/5)%HZN; hzRec.h[i]=hzRec.seen.has(i)?(hzRec.h[i]+Math.max(0,al))/2:Math.max(0,al); hzRec.seen.add(i)}
+  if(!hzRec.raf) hzRec.raf=requestAnimationFrame(()=>{if(!hzRec) return; hzRec.raf=0;
+    $('hzRead').textContent=`Азимут ${Math.round(az)}° (${dir16(az)}) · высота ${Math.round(al)}° · записано ${hzRec.seen.size} из ${HZN} направлений`;
+    $('hzLive').innerHTML=hzSvg(hzRec.h,hzRec.cur)})}
+async function hzStart(){
+  if(typeof DeviceOrientationEvent=='undefined'){$('hzSt').textContent='В этом браузере нет датчиков ориентации — нарисуйте горизонт пальцем.';return}
+  // iPhone и новые Chrome спрашивают разрешение; останавливаемся только при явном отказе — если спросить нельзя, датчики часто работают и так
+  if(typeof DeviceOrientationEvent.requestPermission=='function'){let ok; try{ok=await DeviceOrientationEvent.requestPermission()}catch{}
+    if(ok=='denied'){$('hzSt').textContent='Нет доступа к датчикам ориентации — разрешите его в настройках браузера или нарисуйте горизонт пальцем.';return}}
+  hzRec={h:(hzGet()||Array(HZN).fill(0)).slice(),seen:new Set(),awake:wantAwake};
+  $('hzRec').hidden=false; $('hzLive').innerHTML=hzSvg(hzRec.h); $('hzRead').textContent='Жду компас… Если ничего не меняется — у телефона нет компаса.'; keepAwake(true);
+  addEventListener('deviceorientationabsolute',hzOrient); addEventListener('deviceorientation',hzOrient);
+  try{hzRec.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}); $('hzVideo').srcObject=hzRec.stream; $('hzVideo').hidden=false}
+  catch{$('hzVideo').hidden=true} // без камеры — смотрите поверх телефона
+}
+function hzStop(save){if(!hzRec) return; const r=hzRec; hzRec=null;
+  removeEventListener('deviceorientationabsolute',hzOrient); removeEventListener('deviceorientation',hzOrient);
+  r.stream?.getTracks().forEach(t=>t.stop()); $('hzVideo').srcObject=null; $('hzRec').hidden=true; keepAwake(r.awake);
+  if(save&&r.seen.size){const seen=[...r.seen].sort((a,b)=>a-b); // пропущенные направления — по прямой между соседними записанными
+    for(let i=0;i<HZN;i++) if(!r.seen.has(i)){const a=seen.filter(k=>k<i).at(-1)??seen.at(-1)-HZN, b=seen.find(k=>k>i)??seen[0]+HZN;
+      const va=r.h[(a+HZN)%HZN], vb=r.h[b%HZN]; r.h[i]=b==a?va:va+(vb-va)*(i-a)/(b-a)}
+    hzSave(r.h)}
+  render()}
+$('hzRecBtn').onclick=hzStart; $('hzDone').onclick=()=>hzStop(true); $('hzCancel').onclick=()=>hzStop(false);
 function fillCity(){const c=CITIES[$('city').value]; if(c){$('lat').value=c.lat;$('lon').value=c.lon}}
 if($('city').value>=0) fillCity(); else {$('lat').value=saved.lat??55.75;$('lon').value=saved.lon??37.62}
 
@@ -1280,6 +1391,7 @@ function photoTips(o,n,r,bortle,hm,lat){const t=transitT(o,n), h=Math.round(90-M
   const mer=!t?'':transitDark(o,n)?`Через меридиан проходит в ${hm(t)} на высоте ${h}°: на экваториальной монтировке около этого времени переворот (meridian flip) — до него объект на востоке, после на западе.${h>=80?' Почти через зенит — азимутальные монтировки (и смарт-телескопы) у зенита теряют сопровождение.':''} `
     :`Меридиан проходит в ${hm(t)}, вне тёмного времени — переворот этой ночью не понадобится. `;
   return `<p class="magtip">${mer}${filterTip(o,n,r,bortle)}</p>`}
+const ucf=t=>t?t[0].toUpperCase()+t.slice(1):'';
 const ratingHtml=e=>`<label class="rating">Моя оценка<input type="range" data-act="rating" min="0" max="10" step="0.5" value="${+e.rating||0}"><output>${e.rating?fmtR(e.rating)+' из 10':'нет'}</output></label>`;
 // Похожие объекты — для высоко оценённых (больше 8): тот же тип, близкие размер и блеск, ещё не снятые/не просмотренные,
 // поднимаются здесь хотя бы до 20° в кульминации. Ближе всего — сверху.
@@ -1402,11 +1514,14 @@ function drawMap(n,lat,hm,L){
     svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.4*u}" fill="#b9c3dd" stroke="#0c111d" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="${f1(p[0]+6*u)}" y="${f1(p[1]+4*u)}" font-size="${10*u}" font-style="italic" fill="#b9c3dd">${pl.name}</text>`}
   const mo=moonPos(dd), mp=P(mo.ra,mo.dec);
   if(vis(mp)) svg+=`<g transform="translate(${f1(mp[0])},${f1(mp[1])}) scale(${(.38*u).toFixed(4)})">${moonPhaseSvg(moonIllum(dd),moonIllum(dd+.25)>moonIllum(dd))}</g><text x="${f1(mp[0]+10*u)}" y="${f1(mp[1]+4*u)}" font-size="${10*u}" fill="var(--moon)">Луна</text>`;
+  const hz=hzGet();
+  if(hz){const ring=r=>Array.from({length:HZN},(_,i)=>{const h=typeof r=='number'?r:R0*(90-hz[i])/90, a=i*5*R; return flipXY(200-h*Math.sin(a),200-h*Math.cos(a)).map(v=>v.toFixed(2)).join(',')});
+    svg+=`<path d="M${ring(R0).join('L')}Z M${ring().join('L')}Z" fill="#3b4256" fill-opacity=".85" fill-rule="evenodd" stroke="#59617a" ${ns}/>`}
   svg+=eyepieceCircles(Lst,sl,cl,P,u);
   for(const {o,p} of objs) if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${6*u}" fill="none" stroke="var(--accent)" stroke-width="1.8" ${ns}/>`
     +`<text x="${f1(p[0]+8*u)}" y="${f1(p[1]-7*u)}" font-size="${11*u}" font-weight="600" fill="var(--accent)">${esc(o.id)}</text>`;
   const up=objs.filter(q=>q.p).sort((a,b)=>b.p[2]-a.p[2]), down=objs.filter(q=>!q.p);
-  const listHtml=L.ids.length?`<ul>${up.map(({o,p})=>`<li><button type="button" class="goto" data-id="${esc(o.id)}">${esc(o.id)}${o.name?' · '+esc(o.name):''}</button> — высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]} (азимут ${Math.round(p[3])}°)</li>`).join('')}
+  const listHtml=L.ids.length?`<ul>${up.map(({o,p})=>`<li><button type="button" class="goto" data-id="${esc(o.id)}">${esc(o.id)}${o.name?' · '+esc(o.name):''}</button> — высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]} (азимут ${Math.round(p[3])}°)${hz&&p[2]<hzAt(hz,p[3])?' — <strong>за препятствием</strong>':''}</li>`).join('')}
       ${down.map(({o})=>`<li>${esc(o.id)} — под горизонтом</li>`).join('')}</ul>`:'<p class="empty">В списке пока нет объектов — добавьте их кнопкой с названием списка в карточке объекта.</p>';
   const vb=`${vx.toFixed(2)} ${vy.toFixed(2)} ${(2*half).toFixed(2)} ${(2*hh).toFixed(2)}`, zTxt=z>1.05?`×${z<10?z.toFixed(1).replace('.',','):Math.round(z)}, поле ≈${fmtR(+(180*half/R0).toFixed(z>10?1:0))}°`:'всё небо';
   mapArgs=[n,lat,hm,L];
@@ -1492,8 +1607,11 @@ function render(){
   $('catLegend').textContent=`Каталоги в рекомендациях — ${mode=='photo'?'для съёмки':'для визуала'}`;
   for(const b of $('catList').querySelectorAll('input')) b.checked=catSets[mode].has(b.value);
   const lo=+$('magMin').value, hi=+$('magMax').value;
-  $('progBox').hidden=tab!='rec'; drawSetups();
+  $('progBox').hidden=tab!='rec'; drawSetups(); drawHz();
   $('magBox').hidden=mode!='visual'||tab!='rec'; $('magTxt').textContent=magTxt(lo,hi);
+  $('filtBox').hidden=tab!='rec';
+  $('filtSum').textContent='Фильтры: '+[types.size?[...types].filter(t=>mode=='visual'||!STAR_TYPES.has(t)).map(t=>TYPE_PL[t].toLowerCase()).join(', ')||'все типы':'все типы',
+    PROGS[$('prog').value]?.[0], mode=='visual'&&(lo>MAG_LO||hi<MAG_HI)&&magTxt(lo,hi).toLowerCase()].filter(Boolean).join(' · ');
   $('cats').hidden=tab!='rec'; for(const b of $('cats').children) b.hidden=mode=='photo'&&STAR_TYPES.has(b.dataset.type);
   if(mode=='photo') for(const t of STAR_TYPES) types.delete(t); $('qrow').hidden=tab=='map'; if(tab=='map') $('qst').hidden=true; $('listBar').hidden=tab!='plan'&&tab!='map';
   $('list').hidden=tab=='map'; $('map').hidden=tab!='map'; keepAwake(tab=='map'&&mode=='visual');
@@ -1506,6 +1624,7 @@ function render(){
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)}`;
   const tf=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',timeZone:city?.tz}), hm=t=>tf.format(t);
   const n=night(lat,lon,date); lastNight={n,hm,lat};
+  n.hz=hzGet(); n.hzMax=n.hz?Math.max(...n.hz):0;
 
   // полоса ночи
   const cls=x=>x.sun>0?'day':x.sun>-6?'civil':x.sun>-12?'naut':x.sun>-18?'astro':'night';
@@ -1556,28 +1675,30 @@ function render(){
     // восход/заход — первое пересечение горизонта за сутки от полудня до полудня
     const cross=up=>{const i=alts.findIndex((a,i)=>i&&(alts[i-1]<0)==up&&(a>=0)==up);return i<0?'':(up?'восход ':'заход ')+hm(n.s[i].t)};
     const riseSet=[cross(true),cross(false)].filter(Boolean).join(', ')||(alts[0]>0?'не заходит':'не восходит');
-    const e=log[o.id]?.[kind]||{};
+    const e=log[o.id]?.[kind]||{}, si=o.star?starInfo(o,n,hm,bortle,aperture):null;
     // нашли поиском один объект или точный номер — карточка сразу раскрыта, чтобы снимок был виден без лишнего нажатия
     return `${dh}<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
       <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
-      <span class="score" title="Оценка из 100">${Math.round(r.score)}</span>
-      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)} · до Луны ${Math.round(r.moonSep)}°${kind=='photo'&&transitDark(o,n)?' · меридиан '+hm(transitDark(o,n)):''}${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
-      ${o.star?(([a,b])=>`<span class="facts">${a}</span>
-      <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)} · ${b}</span>`)(starInfo(o,n,hm,bortle,aperture))
-      :`<span class="facts">${physLine(o)}</span>
-      <span class="facts">Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)}${kind=='visual'?' · '+apertureLine(o,n,r,bortle,oiii,aperture):''}</span>`}
+      <span class="score ${r.score>=75?'hi':r.score>=50?'mid':'lo'}" title="Оценка из 100">${Math.round(r.score)}</span>
+      <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:n.hz&&r.max>=minAlt?`этой ночью закрыт вашими деревьями и домами`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)}</span>
+      <span class="facts">${o.star?si[0]:physLine(o)}${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
     </summary><div class="chart">
+      <h4 class="sec">Ночь</h4>
       <svg viewBox="0 0 ${N} 90" preserveAspectRatio="none" role="img" aria-label="Высота объекта за ночь">
         <rect x="${d0.i}" y="0" width="${d1.i-d0.i}" height="90" fill="var(--night)"/>
         <line x1="0" x2="${N}" y1="${90-minAlt}" y2="${90-minAlt}" stroke="var(--line)" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
+        ${n.hz?`<polygon points="0,90 ${n.s.map(x=>`${x.i},${(90-hzAt(n.hz,azOf(lat,x.L,o))).toFixed(1)}`).join(' ')} ${N},90" fill="#59617a" opacity=".55"/>`:''}
         <polyline points="${moonPts}" fill="none" stroke="var(--moon)" stroke-width="1" stroke-dasharray="2 3" opacity=".7" vector-effect="non-scaling-stroke"/>
         <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
       </svg>
       <div class="ticks">${ticksHtml}</div>
-      <p>Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}°. Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°.${o.alias?` Другие обозначения: ${esc(o.alias.replace(/,/g,', '))}.`:''}</p>
-      ${kind=='visual'?magLine(o,+aperture,+$('tfocal').value,oiii):photoTips(o,n,r,bortle,hm,lat)}
+      <p class="night">Объект: ${riseSet}, кульминация в ${hm(n.s[top].t)} на ${Math.round(alts[top])}° · до Луны ${Math.round(r.moonSep)}°. Лучшие месяцы здесь: ${bestMonths(o,lat,lon,+date.slice(0,4),minAlt)}.</p>
+      <p>Сплошная кривая — высота объекта над горизонтом (0–90°), бледная пунктирная — Луны. Тёмная полоса — ночь, горизонтальный пунктир — ${minAlt}°${n.hz?', серое — ваши деревья и дома в направлении объекта':''}.${o.alias?` Другие обозначения: ${esc(o.alias.replace(/,/g,', '))}.`:''}</p>
+      <h4 class="sec">${kind=='visual'?'Как смотреть':'Как снимать'}</h4>
+      ${kind=='visual'?`<p class="magtip">${ucf(o.star?si[1]:apertureLine(o,n,r,bortle,oiii,aperture))}.</p>${magLine(o,+aperture,+$('tfocal').value,oiii)}`:photoTips(o,n,r,bortle,hm,lat)}
+      <h4 class="sec">Снимок</h4>
       ${refImg(o,kind,fov,r.fill)}${kind=="photo"&&fov&&window.claude?frameHtml(o,fov,r.fill):""}
-    </div><div class="log" data-kind="${kind}">
+    </div><div class="log" data-kind="${kind}"><h4 class="sec">Мои отметки</h4>
       <span class="lbl">В план:</span>${kindLists.map(l=>`<button type="button" data-act="list" data-list="${l.id}" aria-pressed="${l.ids.includes(o.id)}">${esc(l.name)}</button>`).join('')}
       ${kind=='photo'?`<button type="button" data-act="done" aria-pressed="${!!e.done}">Снято</button>`:''}
       ${ratingHtml(e)}${similarHtml(o,kind,e,lat)}
