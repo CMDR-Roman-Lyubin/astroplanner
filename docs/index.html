@@ -118,6 +118,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 #map svg{display:block;width:100%;max-width:560px;margin:0 auto;touch-action:manipulation}
 #map label{flex-direction:row;align-items:center;gap:8px;font-size:13px;margin:8px 0}
 #map input[type=range]{padding:0;border:0;background:none;accent-color:var(--accent)}
+button.more{font:inherit;color:var(--accent);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;cursor:pointer}
 #map ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}
 #catList{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:0 8px}
 #catList label{flex-direction:row;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
@@ -647,6 +648,7 @@ const MODES=['photo','visual'], TABS=['rec','plan','done','map'];
 // Типы объектов — как в фильтре Stellarium; выбрано несколько или ни одного (= все)
 const TYPE_PL={DN:'Тёмные туманности',EN:'Эмиссионные туманности',G:'Галактики',GC:'Шаровые скопления',GG:'Группы галактик',
   OC:'Рассеянные скопления',PN:'Планетарные туманности',RN:'Отражательные туманности',SNR:'Остатки сверхновых'};
+let shown=15; // сколько рекомендаций показано; кнопка «Ещё» добавляет по 15, смена режима, раздела или фильтров — сбрасывает
 let types=new Set((saved.types||[]).filter(t=>t in TYPE_PL));
 
 // ---------- План и журнал: {id объекта: {photo:{plan, done:'ГГГГ-ММ-ДД', exp, gear, img}, visual:{plan, done, note}}} ----------
@@ -882,7 +884,7 @@ $('cats').innerHTML='<button type="button" data-type="">Все</button>'+Object.
 const syncTypes=()=>{for(const b of $('cats').children) b.setAttribute('aria-pressed',b.dataset.type?types.has(b.dataset.type):!types.size)};
 syncTypes();
 $('cats').onclick=e=>{const t=e.target.dataset?.type; if(t==null)return;
-  if(!t) types.clear(); else types[types.has(t)?'delete':'add'](t); syncTypes(); render()};
+  if(!t) types.clear(); else types[types.has(t)?'delete':'add'](t); shown=15; syncTypes(); render()};
 $('city').innerHTML=CITIES.map((c,i)=>`<option value="${i}">${c.name}</option>`).join('')+'<option value="-1">Свои координаты</option>';
 $('bortle').innerHTML=['','1 — идеально тёмное','2 — тёмное','3 — сельское','4 — граница села и пригорода','5 — пригород','6 — светлый пригород','7 — окраина города','8 — город','9 — центр города']
   .map((t,i)=>i?`<option value="${i}">${t}</option>`:'').join('');
@@ -913,8 +915,8 @@ if(HAS_EXTRA){$('catsel').hidden=false;
     ...CAT_LIST.map((c,i)=>[c[0],c[0],c[1],count(i)])].filter(c=>c[3])
     .map(([k,label,title,n])=>`<label title="${esc(title)}"><input type="checkbox" value="${esc(k)}">${esc(label)} <small>${n}</small></label>`).join('');
   // галочки показывают набор текущего режима; синхронизируются в render при смене режима
-  $('catList').onchange=e=>{catSets[mode][e.target.checked?'add':'delete'](e.target.value); render()};
-  $('catBtns').onclick=e=>{const p=e.target.dataset?.preset; if(!p)return; catSets[mode]=new Set(PRESETS[p]); render()};
+  $('catList').onchange=e=>{catSets[mode][e.target.checked?'add':'delete'](e.target.value); shown=15; render()};
+  $('catBtns').onclick=e=>{const p=e.target.dataset?.preset; if(!p)return; catSets[mode]=new Set(PRESETS[p]); shown=15; render()};
 }
 function fillCity(){const c=CITIES[$('city').value]; if(c){$('lat').value=c.lat;$('lon').value=c.lon}}
 if($('city').value>=0) fillCity(); else {$('lat').value=saved.lat??55.75;$('lon').value=saved.lon??37.62}
@@ -1049,8 +1051,9 @@ function render(){
   const hide=!mine&&!q&&$('hideDone').checked;
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?!!log[o.id]?.[kind]?.done
     :!(hide&&log[o.id]?.[kind]?.done)&&(q||inCats(o,mask,kind)&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)));
-  const rows=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
-    .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)).slice(0,q?30:mine?999:15);
+  const all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
+    .filter(r=>q||mine||r.score>=5).sort((a,b)=>exact(b.o)-exact(a.o)||(mine&&!q?order(a)-order(b):b.score-a.score)); // все подходящие по убыванию оценки
+  const rows=all.slice(0,q?30:mine?999:shown);
   const kindLists=lists.filter(l=>l.kind==kind);
   $('list').innerHTML=rows.length?rows.map(r=>{const o=r.o;
     const alts=n.s.map(x=>alt(lat,x.L,o)), top=alts.indexOf(Math.max(...alts));
@@ -1086,6 +1089,8 @@ function render(){
     :mine=='plan'?`<p class="empty">В списке «${esc(L.name)}» пока пусто. Откройте карточку объекта в рекомендациях или найдите его поиском и нажмите кнопку с названием списка.</p>`
     :mine?`<p class="empty">Здесь пока пусто. Откройте карточку объекта и нажмите «${kind=='photo'?'Снято':'Просмотрено'}».</p>`
     :`<p class="empty">Подходящих объектов нет${kind=='visual'?': мешает засветка или Луна, или слишком узкий диапазон блеска':''}${types.size?'. Попробуйте выбрать другие типы объектов':''}.</p>`;
+  // «Ещё» — следующие 15 рекомендаций по оценке
+  if(!q&&!mine&&all.length>rows.length) $('list').insertAdjacentHTML('beforeend',`<button type="button" class="more" data-act="more">Ещё ${Math.min(15,all.length-rows.length)} (осталось ${all.length-rows.length})</button>`);
   showImgs($('list'));
 }
 $('city').onchange=()=>{fillCity();render()};
@@ -1106,6 +1111,7 @@ function logChanged(card){const id=card.dataset.id, e=log[id];
   card.querySelector('.marks').textContent=marks(id);
   saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800)} // в облако — одной записью после паузы в наборе
 $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)return;
+  if(b.dataset.act=='more'){shown+=15; render(); return}
   const card=b.closest('details'), box=b.closest('.log'), kind=box.dataset.kind, act=b.dataset.act;
   if(act=='find'){$('q').value=b.dataset.id; tab='rec'; render(); $('q').scrollIntoView({block:'start'}); return} // похожий объект — открываем его карточку
   if(act=='list'){const l=lists.find(x=>x.id==b.dataset.list); if(!l)return; const id=card.dataset.id;
@@ -1143,8 +1149,8 @@ $('list').onchange=async ev=>{const t=ev.target; if(t.dataset.act!='img'||!t.fil
   }catch(e){st.textContent={too_large:'Файл больше 20 МБ — уменьшите его.',unsupported_type:'Подходят PNG, JPEG, WebP и GIF.',
     quota_or_state:'Место для файлов на странице закончилось.'}[e?.code]||'Не удалось загрузить фото. Попробуйте ещё раз.'}
   t.value=''};
-for(const t of TABS) $('tab-'+t).onclick=()=>{tab=t; render()};
-for(const m of MODES) $('mode-'+m).onclick=()=>{mode=m; render()};
+for(const t of TABS) $('tab-'+t).onclick=()=>{tab=t; shown=15; render()};
+for(const m of MODES) $('mode-'+m).onclick=()=>{mode=m; shown=15; render()};
 // списки планов: выбор, переименование, создание, удаление (в два нажатия)
 $('lists').onclick=e=>{const b=e.target.closest('[data-list]'); if(b){curList[mode]=b.dataset.list; render()}};
 $('listName').oninput=()=>{const L=listOf(mode); L.name=$('listName').value.trim()||'Без названия'; saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800); render()};
@@ -1207,5 +1213,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 13 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 14 от 12.11.2026";v.hidden=false}</script>
 </body></html>
