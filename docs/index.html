@@ -135,7 +135,9 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 /* карта занимает всё место между кнопками и списком; подпись прячем */
 /* на весь экран — только карта и кнопка «Назад»; область карты подгоняется под пропорции экрана, поэтому она заполняет его целиком */
 #map.full{padding:0;overflow:hidden}
-#map.full>*:not(#mapSky):not(.mapback){display:none}
+#map.full>*:not(#mapSky):not(.mapback):not(.starbar){display:none}
+/* ползунок предела блеска остаётся и на весь экран — полупрозрачной полоской внизу */
+#map.full .starbar{position:fixed;z-index:101;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));margin:0;flex-direction:column;align-items:stretch;gap:2px;background:rgba(12,17,29,.78);border:1px solid var(--line);border-radius:12px;padding:6px 12px}
 #map.full svg{width:100vw;height:100dvh;max-width:none;margin:0}
 #map .mapback{display:none}
 #map.full .mapback{display:block;position:fixed;z-index:101;top:max(10px,env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));
@@ -1086,7 +1088,7 @@ function drawMap(n,lat,hm,L){
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full">На весь экран</button></div>
-    <label><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
+    <label class="starbar"><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
     <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно.</p>
@@ -1440,5 +1442,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 25 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 26 от 12.11.2026";v.hidden=false}</script>
 </body></html>
