@@ -1069,9 +1069,9 @@ function drawMap(n,lat,hm,L){
   // при приближении — остальные объекты основного списка блёклыми кружками, чтобы было от чего «прыгать»
   if(z>=2) for(const o of CATALOG){if(!o.base||L.ids.includes(o.id))continue; const p=P(o.ra,o.dec); if(vis(p))
     svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.5*u}" fill="none" stroke="#8a93ab" stroke-width="1" ${ns}/><text x="${f1(p[0]+5*u)}" y="${f1(p[1]-4*u)}" font-size="${8*u}" fill="#8a93ab">${esc(o.id)}</text>`}
-  // подписи планет — одним нейтральным цветом, чтобы не путать с объектами плана (они жёлтые)
+  // планеты — точка и подпись одним нейтральным цветом, чтобы не путать с объектами плана (они жёлтые)
   for(const pl of planetsAt(dd)){const p=P(pl.ra,pl.dec); if(vis(p))
-    svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.6*u}" fill="${pl.col}"/><text x="${f1(p[0]+6*u)}" y="${f1(p[1]+4*u)}" font-size="${10*u}" font-style="italic" fill="#b9c3dd">${pl.name}</text>`}
+    svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.4*u}" fill="#b9c3dd" stroke="#0c111d" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="${f1(p[0]+6*u)}" y="${f1(p[1]+4*u)}" font-size="${10*u}" font-style="italic" fill="#b9c3dd">${pl.name}</text>`}
   const mo=moonPos(dd), mp=P(mo.ra,mo.dec);
   if(vis(mp)) svg+=`<g transform="translate(${f1(mp[0])},${f1(mp[1])}) scale(${(.38*u).toFixed(4)})">${moonPhaseSvg(moonIllum(dd),moonIllum(dd+.25)>moonIllum(dd))}</g><text x="${f1(mp[0]+10*u)}" y="${f1(mp[1]+4*u)}" font-size="${10*u}" fill="var(--moon)">Луна</text>`;
   for(const {o,p} of objs) if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${6*u}" fill="none" stroke="var(--accent)" stroke-width="1.8" ${ns}/>`
@@ -1446,5 +1446,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 28 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 29 от 12.11.2026";v.hidden=false}</script>
 </body></html>
