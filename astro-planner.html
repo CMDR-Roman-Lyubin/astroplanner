@@ -626,14 +626,49 @@ const refUrl=o=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=DS
 // На «Фото» — цветной снимок Stellarium (как объект выглядит на готовой астрофотографии), на «Визуале» и там, где цветного нет, —
 // чёрно-белый DSS: он ближе к тому, что видно в окуляр
 const stellUrl=f=>'https://raw.githubusercontent.com/Stellarium/stellarium/master/nebulae/default/'+encodeURIComponent(f);
+// Цветные снимки из Википедии для объектов, которых нет в Stellarium (путь внутри thumb.wikimedia.org или полный адрес)
+const WIKI={
+"M32":"a/a3/Messier_32_from_Hubble.jpg/960px-Messier_32_from_Hubble.jpg",
+"M41":"2/28/M41-Open-Cluster-of-Stars.png/960px-M41-Open-Cluster-of-Stars.png",
+"M43":"9/93/M43_HST.jpg/960px-M43_HST.jpg",
+"M48":"4/43/M48_Mazur.jpg/960px-M48_Mazur.jpg",
+"M59":"8/8f/Messier59_-_HST_-_Potw1921a.jpg/960px-Messier59_-_HST_-_Potw1921a.jpg",
+"M78":"4/4a/Messier_78.jpg/960px-Messier_78.jpg",
+"M84":"5/59/A_fascinating_core.jpg/960px-A_fascinating_core.jpg",
+"M86":"9/95/Beacon_of_Light_Messier_86.jpg/960px-Beacon_of_Light_Messier_86.jpg",
+"M87":"0/07/Messier_87_Hubble_WikiSky.jpg/960px-Messier_87_Hubble_WikiSky.jpg",
+"M110":"1/1b/Not_So_Dead_After_All_%2848763200193%29.jpg/960px-Not_So_Dead_After_All_%2848763200193%29.jpg",
+"IC 5070":"1/1a/Pelican_nebula_ic5070_ic5067.jpg/960px-Pelican_nebula_ic5070_ic5067.jpg",
+"NGC 6960":"6/6e/Veil_Nebula_-_NGC6960.jpg/960px-Veil_Nebula_-_NGC6960.jpg",
+"NGC 6992":"5/5d/NGC6992_Veil_Nebula_Supernova_Remnant_from_the_Mount_Lemmon_SkyCenter_Schulman_Telescope_courtesy_Adam_Block.jpg/960px-NGC6992_Veil_Nebula_Supernova_Remnant_from_the_Mount_Lemmon_SkyCenter_Schulman_Telescope_courtesy_Adam_Block.jpg",
+"NGC 2264":"e/ef/NGC_2264.jpg/960px-NGC_2264.jpg",
+"IC 443":"5/50/IC443_Final_with_copyright.jpg/960px-IC443_Final_with_copyright.jpg",
+"NGC 2024":"1/15/Flame-Nebula.jpg/960px-Flame-Nebula.jpg",
+"NGC 1977":"https://upload.wikimedia.org/wikipedia/commons/1/14/NGC1977_Running_Man_Nebula_from_the_Mount_Lemmon_SkyCenter_Schulman_Telescope_courtesy_Adam_Block.jpg",
+"NGC 3628":"9/9e/NGC_3628.png/960px-NGC_3628.png",
+"IC 4665":"2/20/Poseidon%27s_Trident_August_11_2025.png/960px-Poseidon%27s_Trident_August_11_2025.png",
+"NGC 6940":"e/e4/Mothra_Cluster_July_11_2026.png/960px-Mothra_Cluster_July_11_2026.png",
+"Cr 399":"1/1f/CR399_-_Brocchi%27s_Cluster_%2829449085766%29.png/960px-CR399_-_Brocchi%27s_Cluster_%2829449085766%29.png",
+"IC 410":"6/6c/IC410_SHO.jpg/960px-IC410_SHO.jpg",
+"NGC 2070":"7/7e/Tarantula_Nebula_by_JWST.jpg/960px-Tarantula_Nebula_by_JWST.jpg",
+"LMC":"3/3c/Eso1021d.jpg/960px-Eso1021d.jpg",
+"NGC 104":"3/30/Heic1510a.tif/lossy-page1-960px-Heic1510a.tif.jpg",
+"IC 2602":"b/b8/The_Southern_Pleiades_%28IC_2602%29.jpg/960px-The_Southern_Pleiades_%28IC_2602%29.jpg",
+"NGC 6188":"3/3b/Rgb-ngc6193.jpg/960px-Rgb-ngc6193.jpg",
+"IC 4604":"3/3d/Rho_Ophiuchi_cloud_complex_%28weic2316a%29.jpg/960px-Rho_Ophiuchi_cloud_complex_%28weic2316a%29.jpg",
+"Mel 20":"3/3f/Melotte_20_-_Alpha_Persei_Cluster_%2855467173213%29.jpg/960px-Melotte_20_-_Alpha_Persei_Cluster_%2855467173213%29.jpg",
+"Mel 111":"1/13/ASY-MB0124-Coma-Star-Cluster.jpg/960px-ASY-MB0124-Coma-Star-Cluster.jpg",
+"Mel 25":"b/b0/Hyades_cluster.jpg/960px-Hyades_cluster.jpg"};
+const wikiUrl=p=>p.startsWith("https://")?p:"https://thumb.wikimedia.org/wikipedia/commons/thumb/"+p;
 function refImg(o,kind){
-  const st=kind=='photo'&&STELL[o.id];
-  const url=st?stellUrl(st[0]):refUrl(o);
+  const st=kind=='photo'&&STELL[o.id], wk=kind=='photo'&&!st&&WIKI[o.id];
+  const url=st?stellUrl(st[0]):wk?wikiUrl(wk):refUrl(o);
   const cap=st?`Снимок из Stellarium${st[1]?' · автор: '+esc(st[1]):''} · ориентация как у автора`
+    :wk?'Снимок из Википедии (Wikimedia Commons) · ориентация как у автора'
     :`Обзор DSS2, NASA SkyView · поле ${String(refFov(o)).replace('.',',')}° · север сверху, восток слева`;
   return window.claude
-    ?`<p><a href="${url}" target="_blank" rel="noopener">${st?'Цветной снимок':'Снимок из обзора неба DSS2'}: ${esc(o.id)}</a> — откроется в браузере.</p>`
-    :`<figure class="ref"><img src="${url}" loading="lazy" alt="${esc(o.id)}: ${st?'цветной снимок':'снимок обзора неба DSS2'}"><figcaption>${cap}</figcaption></figure>`;
+    ?`<p><a href="${url}" target="_blank" rel="noopener">${st||wk?'Цветной снимок':'Снимок из обзора неба DSS2'}: ${esc(o.id)}</a> — откроется в браузере.</p>`
+    :`<figure class="ref"><img src="${url}" loading="lazy" alt="${esc(o.id)}: ${st||wk?'цветной снимок':'снимок обзора неба DSS2'}"><figcaption>${cap}</figcaption></figure>`;
 }
 document.addEventListener('error',e=>{const f=e.target.closest?.('.ref'); if(f) f.querySelector('figcaption').textContent='Снимок из обзора не загрузился: нужен интернет, хотя бы один раз для этого объекта.'},true);
 // свой снимок показываем и в карточке визуала, только для просмотра
