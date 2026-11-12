@@ -63,6 +63,8 @@ Object.assign(TYPE, { GC: 'GC', RN: 'RN', BN: 'RN', DN: 'DN', MoC: 'DN', SNR: 'S
 const SIZE = { G: .5, GG: 5, OC: 5, GC: 3, EN: 5, RN: 3, DN: 5, SNR: 10, PN: .3 };
 // У этих объектов основного списка в Stellarium другое главное обозначение
 const BASE_ALIAS = { 'Abell 21': ['Sh2-274'], 'NGC 869/884': ['NGC 869', 'NGC 884'], 'NGC 5907': ['NGC 5906'] };
+// Угол наклона (от севера через восток), которого нет в Stellarium или он там для другой части объекта — измерен по снимкам DSS2 (12.11.2026)
+const BASE_PA = { 'NGC 6960': 162, 'NGC 6992': 140, 'NGC 1499': 119, M8: 90, 'IC 1848': 80, 'NGC 7822': 90, 'NGC 869/884': 90 };
 
 async function src(name) {
   const f = path.join(cache, name);
@@ -92,7 +94,8 @@ async function src(name) {
   const en = {}; // id объекта → английские имена через «|»
   const addEn = (id, keys) => { const s = new Set(en[id] ? en[id].split('|') : []); for (const k of keys) for (const x of enNames[k] || []) s.add(x); if (s.size) en[id] = [...s].join('|') };
   const html = fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8');
-  const baseIds = html.match(/const CATALOG = `([^`]*)`/)[1].trim().split('\n').map(l => l.split(';')[0]);
+  const baseLines = html.match(/const CATALOG = `([^`]*)`/)[1].trim().split('\n'), baseIds = baseLines.map(l => l.split(';')[0]);
+  const baseSize = Object.fromEntries(baseLines.map(l => { const f = l.split(';'); return [f[0], [+f[7], +f[8]]] }));
   const baseOf = {}; // обозначение → id объекта основного списка
   for (const id of baseIds) for (const a of [id, ...(BASE_ALIAS[id] || [])]) baseOf[a] = id;
 
@@ -110,7 +113,14 @@ async function src(name) {
     if (!ids.length) continue;
     // объект из основного списка — только запоминаем, в каких он каталогах
     const hit = ids.map(x => baseOf[x[1]]).find(Boolean);
-    if (hit) { const e = base[hit] || (base[hit] = { m: 0, ids: new Set() }); e.m |= mask; ids.forEach(x => x[1] != hit && e.ids.add(x[1])); addEn(hit, keys); continue }
+    // угол наклона (от севера через восток) — только у вытянутых. У основного списка — если размер в Stellarium похож на наш:
+    // иначе там другая часть объекта (NGC 6960 в Stellarium — весь комплекс Вуали 210′×160′, у нас — одна Западная Вуаль)
+    // 0 у туманностей и скоплений в Stellarium обычно значит «не задан» — у галактик это настоящий угол
+    const pa = (A, B) => r[9] !== '' && r[9] != null && +B < .8 * +A && +A > 0 && (+r[9] || TYPE[r[5]] == 'G') ? +r[9] : '';
+    if (hit) { const e = base[hit] || (base[hit] = { m: 0, ids: new Set() }); e.m |= mask;
+      const [ma, mb] = baseSize[hit]; // галактика — тот же объект при любом размере; туманность — только при похожем размере
+      if (e.pa == null && mb < .8 * ma && (TYPE[r[5]] == 'G' || +r[7] > ma / 1.6 && +r[7] < ma * 1.6) && pa(r[7], r[8]) !== '') e.pa = pa(r[7], r[8]);
+      if (hit in BASE_PA) e.pa = BASE_PA[hit]; ids.forEach(x => x[1] != hit && e.ids.add(x[1])); addEn(hit, keys); continue }
     const dec = +r[2], type = TYPE[r[5]];
     if (!(dec >= MIN_DEC) || !type) continue;
 
@@ -140,7 +150,7 @@ async function src(name) {
     CATS.forEach((c, i) => { if (mask & 1 << i) stat[c[0]]++ });
     addEn(id, keys);
     extra.set(id, [id, (nm ? nm.n : '').replace(/[;`\\$]/g, ' '), type, (+r[1] / 15).toFixed(4), dec.toFixed(3), (est ? '~' : '') + +mag.toFixed(1),
-      +a.toFixed(2), +b.toFixed(2), mask.toString(36), order.slice(1).map(x => x[1]).join(',')].join(';'));
+      +a.toFixed(2), +b.toFixed(2), mask.toString(36), order.slice(1).map(x => x[1]).join(','), pa(a, b)].join(';'));
   }
   // Карта неба: звёзды до 7,5ᵐ (слабые видны только при приближении) «RA,Dec,блеск» через «;», линии созвездий — ломаные «RA,Dec,RA,Dec…» через «;», подписи — «имя,RA,Dec»
   const ra = x => +((x + 360) % 360).toFixed(1), d1 = x => +x.toFixed(1);
@@ -151,10 +161,10 @@ async function src(name) {
   const cnames = JSON.parse(await src('constellations.json')).features
     .map(f => [f.properties.ru, ra(f.geometry.coordinates[0]), d1(f.geometry.coordinates[1])].join(',')).join(';');
   const out = `// Сгенерировано gen-catalogs.js из каталога Stellarium (GPL) — руками не править.
-// CAT_BASE: id основного списка → «маска каталогов;другие обозначения»; CAT_EXTRA: id;имя;тип;RA ч;Dec;блеск (~ — оценка);a′;b′;маска;другие обозначения
+// CAT_BASE: id основного списка → «маска каталогов;другие обозначения[;угол наклона]»; CAT_EXTRA: id;имя;тип;RA ч;Dec;блеск (~ — оценка);a′;b′;маска;другие обозначения;угол наклона от севера через восток, ° (пусто — неизвестен)
 // Объекты северного неба (склонение от ${MIN_DEC}°) в пределах досягаемости 12″ телескопа.
 const CAT_LIST=${JSON.stringify(CATS.map(c => [c[0], c[1]]))};
-const CAT_BASE=${JSON.stringify(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, v.m.toString(36) + ';' + [...v.ids].join(',')])))};
+const CAT_BASE=${JSON.stringify(Object.fromEntries(Object.entries(base).map(([k, v]) => [k, v.m.toString(36) + ';' + [...v.ids].join(',') + (v.pa != null ? ';' + v.pa : '')])))};
 // CAT_EN: id → английские названия через «|» — только для поиска
 const CAT_EN=${JSON.stringify(Object.fromEntries(Object.entries(en).filter(([id]) => extra.has(id) || base[id])))};
 const SKY_STARS='${stars}';
