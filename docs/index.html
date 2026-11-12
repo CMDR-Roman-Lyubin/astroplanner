@@ -128,11 +128,16 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .mapctl button[data-z=in],.mapctl button[data-z=out]{font-size:17px;line-height:1;padding:4px 13px}
 .mapctl span{font-size:13px;color:var(--muted)}
 #map .goto{padding:2px 8px;color:var(--accent)}
+#map .dssopt{flex-direction:row;align-items:flex-start;gap:8px;font-size:13px;color:var(--muted)}
+#map .dssopt input{flex:none;margin:1px 0}
 #map ul{list-style:none;padding-left:0}
 #map li{margin:4px 0}
 /* на весь экран: слой поверх страницы (не системный полноэкранный режим — иначе красный ночной фильтр его не накрывает) */
 #map.full{position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto;padding:10px max(10px,env(safe-area-inset-right,0px)) 20px max(10px,env(safe-area-inset-left,0px))}
-#map.full svg{max-width:min(100%,calc(100vh - 110px))}
+/* карта занимает всё место между кнопками и списком; подпись прячем */
+#map.full{display:flex;flex-direction:column;gap:6px}
+#map.full svg{flex:1 0 auto;width:100%;max-width:none;height:min(100vw,calc(100dvh - 190px));min-height:280px}
+#map.full>p.sub{display:none}
 #map label{flex-direction:row;align-items:center;gap:8px;font-size:13px;margin:8px 0}
 #map input[type=range]{padding:0;border:0;background:none;accent-color:var(--accent)}
 .qrow{display:flex;gap:6px}
@@ -1026,7 +1031,7 @@ const dssField=o=>`https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?Survey=
 const prefetched=new Set();
 // по одному: на несколько запросов сразу SkyView иногда отвечает ошибкой. Загрузка через картинку — так видно, что пришёл снимок, а не ошибка
 let fieldQueue=Promise.resolve();
-const prefetchFields=ids=>{if(window.claude||!navigator.onLine)return; for(const id of ids){const o=BYID[id]; if(!o||prefetched.has(id))continue; prefetched.add(id);
+const prefetchFields=ids=>{if(window.claude||!navigator.onLine||!dssOn)return; for(const id of ids){const o=BYID[id]; if(!o||prefetched.has(id))continue; prefetched.add(id);
   fieldQueue=fieldQueue.then(()=>new Promise(res=>{const i=new Image(), url=dssField(o), t=setTimeout(()=>{i.src='';fail()},60000);
     const fail=()=>{clearTimeout(t); prefetched.delete(id); dropCached(url); res()};
     i.onload=()=>{clearTimeout(t); res()}; i.onerror=fail; i.src=url}))}};
@@ -1035,6 +1040,8 @@ const prefetchFields=ids=>{if(window.claude||!navigator.onLine)return; for(const
 // Вид снизу вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближение до ×60 (поле ~3°) — чтобы найти объект в искателе:
 // при приближении появляются звёзды слабее (до 7,5ᵐ) и подписи объектов основного списка
 let mapIdx=null, mapKey='', mapView={z:1,cx:200,cy:200}, mapFull=false;
+// снимки DSS вокруг объектов плана — по желанию (галочка на карте), по умолчанию выключены: ~200 КБ на объект
+let dssOn=false; try{dssOn=localStorage.getItem('dss')=='1'}catch{}
 let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,7.5)}catch{}
 const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
 function clampView(){const v=mapView; v.z=clamp(v.z,1,ZMAX); const h=200/v.z; v.cx=clamp(v.cx,h,400-h); v.cy=clamp(v.cy,h,400-h)}
@@ -1076,7 +1083,7 @@ function drawMap(n,lat,hm,L){
   // окулярное поле: настоящий снимок неба (звёзды гораздо слабее 14ᵐ) вокруг объектов плана, повёрнутый и отмасштабированный под карту.
   // Ставим его по трём точкам — центр, на 0,5° к северу и к востоку, — поэтому поворот, масштаб и зеркальность совпадают с картой
   let fields='';
-  if(z>=8&&!window.claude) for(const {o,p} of objs){if(!vis(p))continue;
+  if(z>=8&&!window.claude&&dssOn) for(const {o,p} of objs){if(!vis(p))continue;
     const dl=.5, pn=P(o.ra,o.dec+dl), pe=P(o.ra+dl/Math.max(cos(o.dec),.05),o.dec); if(!pn||!pe)continue;
     const W=DSS_PIX, sc=DSS_DEG/W, Nx=(pn[0]-p[0])/dl, Ny=(pn[1]-p[1])/dl, Ex=(pe[0]-p[0])/dl, Ey=(pe[1]-p[1])/dl;
     const a=-Ex*sc, b=-Ey*sc, c=-Nx*sc, d=-Ny*sc, e=p[0]-(a+c)*W/2, ff=p[1]-(b+d)*W/2; // пиксель (x вправо = запад, y вниз = юг) → карта
@@ -1097,13 +1104,23 @@ function drawMap(n,lat,hm,L){
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full" aria-pressed="${mapFull}">${mapFull?'Свернуть':'На весь экран'}</button></div>
+    ${window.claude?'':`<label class="dssopt"><input type="checkbox" id="dss"${dssOn?' checked':''}> Снимки неба DSS вокруг объектов плана — звёзды слабее 14ᵐ для поиска через окуляр (~200 КБ на объект, скачиваются заранее, пока есть интернет)</label>`}
     <label><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="7.5" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
-    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно, со снимком неба вокруг (звёзды гораздо слабее 14ᵐ) — для поиска через окуляр. Снимки скачиваются заранее, пока есть интернет.</p>
+    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, север сверху, восток слева. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно.</p>
     <div id="mapList">${listHtml}</div>`;
 }
 let mapArgs=null, mapRaf=0;
+// на весь экран: слой карты поверх страницы + системный полноэкранный режим для всего документа (прячет строку состояния и кнопки Android).
+// Полноэкранным делаем документ, а не саму карту — иначе красный ночной фильтр (body::after) её не накроет
+function setMapFull(on){mapFull=on; $('map').classList.toggle('full',on);
+  const b=document.querySelector('#map [data-z=full]'); if(b){b.textContent=on?'Свернуть':'На весь экран'; b.setAttribute('aria-pressed',on)}
+  try{if(on&&!document.fullscreenElement) document.documentElement.requestFullscreen?.({navigationUI:'hide'})?.catch(()=>{});
+    if(!on&&document.fullscreenElement) document.exitFullscreen?.().catch(()=>{})}catch{}
+  if(!on) $('map').scrollIntoView({block:'start'}); mapRedraw()}
+// вышли из полноэкранного режима жестом «назад» — сворачиваем и слой карты
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&mapFull) setMapFull(false)});
 const mapRedraw=()=>{if(!mapRaf&&mapArgs) mapRaf=requestAnimationFrame(()=>{mapRaf=0; drawMap(...mapArgs)})};
 // масштаб с сохранением точки под пальцем/курсором (x,y — в координатах карты)
 function zoomAt(f,x,y){const v=mapView, z0=v.z; v.z=clamp(z0*f,1,ZMAX); const k=z0/v.z; v.cx=x-(x-v.cx)*k; v.cy=y-(y-v.cy)*k; clampView(); mapRedraw()}
@@ -1121,7 +1138,7 @@ $('map').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)
   const z=b.dataset.z;
   if(z=='in'||z=='out') zoomAt(z=='in'?1.6:1/1.6,mapView.cx,mapView.cy);
   else if(z=='all'){mapView={z:1,cx:200,cy:200}; mapRedraw()}
-  else if(z=='full'){mapFull=!mapFull; $('map').classList.toggle('full',mapFull); b.textContent=mapFull?'Свернуть':'На весь экран'; b.setAttribute('aria-pressed',mapFull); if(!mapFull) $('map').scrollIntoView({block:'start'})}
+  else if(z=='full') setMapFull(!mapFull)
   else if(b.classList.contains('goto')&&mapProj){const o=BYID[b.dataset.id], p=o&&mapProj(o.ra,o.dec); if(!p)return;
     mapView={z:30,cx:p[0],cy:p[1]}; /* поле ~6° — как у искателя, снимок неба вокруг объекта виден целиком */ clampView(); mapRedraw(); $('mapSky').scrollIntoView({block:'center',behavior:'smooth'})}});
 function render(){
@@ -1384,6 +1401,8 @@ async function voiceSearch(){
 $('qmic').hidden=!canRec; $('qmic').onclick=voiceSearch;
 $('q').addEventListener('input',()=>{$('qst').hidden=true});
 // ползунок времени: не чаще кадра экрана и без полной перерисовки страницы
+$('map').addEventListener('change',e=>{if(e.target.id!='dss')return; dssOn=e.target.checked; try{localStorage.setItem('dss',dssOn?'1':'0')}catch{}
+  if(dssOn) prefetchFields(lists.filter(l=>l.kind=='visual').flatMap(l=>l.ids)); mapRedraw()});
 $('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}
   else if(e.target.id=='starLim'){starLim=+e.target.value; try{localStorage.setItem('starLim',starLim)}catch{} mapRedraw()}};
 render();
@@ -1439,5 +1458,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 22 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 23 от 12.11.2026";v.hidden=false}</script>
 </body></html>
