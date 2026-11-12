@@ -7,6 +7,11 @@ const out = path.join(__dirname, 'docs');
 fs.mkdirSync(out, { recursive: true });
 const write = (name, data) => fs.writeFileSync(path.join(out, name), data);
 const BG = '#0c111d';
+// Номер версии = число коммитов после того, как эта сборка будет закоммичена; дата — день сборки.
+// shortcut: собрали дважды без коммита — номер тот же; для бета-теста этого хватает
+let n = '?';
+try { n = +require('child_process').execSync('git rev-list --count HEAD', { cwd: __dirname }).toString() + 1 } catch {}
+const VERSION = `Версия ${n} от ${new Date().toLocaleDateString('ru', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
 
 // Страница для артефакта не содержит <html>/<head> — оборачиваем её так же, как это делает публикация
 write('index.html', `<!doctype html><html lang="ru"><head><meta charset="utf-8">
@@ -14,6 +19,7 @@ write('index.html', `<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="${BG}"><link rel="icon" href="icon-192.png">
 <style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
 ${fs.readFileSync(path.join(__dirname, 'astro-planner.html'), 'utf8')}
+<script>{const v=document.getElementById('ver');v.textContent=${JSON.stringify(VERSION)};v.hidden=false}</script>
 </body></html>`);
 
 write('manifest.webmanifest', JSON.stringify({
@@ -29,7 +35,7 @@ self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   // снимки обзора неба не меняются: раз увиденный хранится навсегда и показывается без сети
-  if(u.hostname=='skyview.gsfc.nasa.gov'){e.respondWith(caches.open('sky-ref').then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{c.put(e.request,r.clone());return r}))));return}
+  if(u.hostname=='skyview.gsfc.nasa.gov'||u.hostname=='raw.githubusercontent.com'){e.respondWith(caches.open('sky-ref').then(c=>c.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{c.put(e.request,r.clone());return r}))));return}
   if(e.request.method!='GET'||u.origin!=location.origin)return;
   e.respondWith(caches.match(e.request,{ignoreSearch:true}).then(hit=>{
     const net=fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}return r});
