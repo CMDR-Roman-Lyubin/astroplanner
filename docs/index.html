@@ -50,6 +50,11 @@ input[type=checkbox]{width:20px;height:20px;margin:7px 0;accent-color:var(--acce
 #setup{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:12px}
 #setupDone{width:100%}
 .grp{grid-column:1/-1;margin:6px 0 0;font-size:13px;font-weight:600;color:var(--accent)}
+.importbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--card);border:1px solid var(--accent);border-radius:8px;padding:10px 12px}
+.importbar span{flex-basis:100%}
+.importbar .more{padding:6px 14px}
+.geo{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.geo .more{padding:7px 12px}
 .where{margin:0;color:var(--muted);font-size:14px} /* только место и дата; настройки открывает шестерёнка */
 .hbtns #gear{font-size:15px;line-height:1;padding:3px 9px}
 .list h2{font-size:15px;font-weight:600;margin:10px 0 0}
@@ -160,6 +165,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <label>Город<select id="city"></select></label>
     <label>Широта, °<input id="lat" type="number" step="0.01" min="-90" max="90"></label>
     <label>Долгота, °<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
+    <div class="geo"><button type="button" class="more" id="geo">📍 Координаты по геопозиции</button><span class="sub" id="geoSt" role="status"></span></div>
     <label>Вечер даты<span class="datebox"><span></span><input id="date" type="date"></span></label>
     <label>Засветка (Бортль)<select id="bortle"></select></label>
     <h3 class="grp">Астрофото</h3>
@@ -231,6 +237,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <div class="listedit">
       <input id="listName" aria-label="Название выбранного списка" maxlength="40">
       <button type="button" id="listNew">Новый список</button>
+      <button type="button" id="listShare">Поделиться</button>
       <button type="button" id="listDel">Удалить список</button>
     </div>
   </div>
@@ -697,6 +704,7 @@ function migratePlans(){
 migratePlans();
 const curList={photo:saved.listPhoto,visual:saved.listVisual};
 const listOf=kind=>lists.find(l=>l.id==curList[kind]&&l.kind==kind)||lists.find(l=>l.kind==kind);
+const plural=(n,one,few,many)=>n%10==1&&n%100!=11?one:n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?few:many;
 const fmtR=x=>String(x).replace('.',',');
 const marks=id=>{const p=log[id]?.photo||{}, v=log[id]?.visual||{};
   return [...lists.filter(l=>l.ids.includes(id)).map(l=>`${l.kind=='photo'?'фото':'визуал'}: «${l.name}»`),
@@ -1044,7 +1052,7 @@ function render(){
   $('date').previousElementSibling.textContent=fmtDate(date);
   $('setupSum').textContent=`${city?city.name:`${lat}°, ${lon}°`} · вечер ${ruDate(date)}`;
   const tf=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',timeZone:city?.tz}), hm=t=>tf.format(t);
-  const n=night(lat,lon,date);
+  const n=night(lat,lon,date); lastNight={n,hm,lat};
 
   // полоса ночи
   const cls=x=>x.sun>0?'day':x.sun>-6?'civil':x.sun>-12?'naut':x.sun>-18?'astro':'night';
@@ -1118,6 +1126,15 @@ function render(){
   showImgs($('list'));
 }
 $('city').onchange=()=>{fillCity();render()};
+// Координаты с GPS телефона — работает и без интернета. Город переключается на «Свои координаты», время — по часам устройства
+$('geo').onclick=()=>{const st=$('geoSt');
+  if(!navigator.geolocation){st.textContent='Геопозиция недоступна в этом браузере.';return}
+  st.textContent='Определяю местоположение…';
+  navigator.geolocation.getCurrentPosition(p=>{
+    $('lat').value=p.coords.latitude.toFixed(2); $('lon').value=p.coords.longitude.toFixed(2); $('city').value=-1;
+    st.textContent=`Готово: ${$('lat').value}°, ${$('lon').value}° (точность ~${Math.round(p.coords.accuracy)} м).`; render()},
+    e=>{st.textContent=e.code==1?'Доступ к геопозиции запрещён — разрешите его для приложения в настройках телефона.':'Не удалось определить местоположение. Выйдите на открытое место и попробуйте ещё раз.'},
+    {enableHighAccuracy:false,timeout:20000,maximumAge:6e5})};
 for(const id of ['lat','lon']) $(id).oninput=()=>{$('city').value=-1;render()};
 $('date').onchange=$('bortle').onchange=$('oiii').onchange=$('hideDone').onchange=$('aperture').oninput=$('q').oninput=render;
 // Смарт-телескоп — это просто готовая пара «фокусное + сенсор»; ручная правка любого из них сбрасывает выбор модели
@@ -1186,6 +1203,36 @@ $('lists').onclick=e=>{const b=e.target.closest('[data-list]'); if(b){curList[mo
 $('listName').oninput=()=>{const L=listOf(mode); L.name=$('listName').value.trim()||'Без названия'; saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800); render()};
 $('listNew').onclick=()=>{const l={id:newId(),name:'Список '+(lists.filter(x=>x.kind==mode).length+1),kind:mode,ids:[]};
   lists.push(l); curList[mode]=l.id; saveLocal(); pushCloud(); render(); $('listName').focus(); $('listName').select()};
+// ---------- Поделиться списком: текст с объектами и временем на эту ночь + ссылка, по которой список добавится в приложение ----------
+const APP_URL=location.protocol.startsWith('http')&&!window.claude?location.origin+location.pathname:'https://cmdr-roman-lyubin.github.io/astroplanner/';
+let lastNight=null;
+$('listShare').onclick=async()=>{const L=listOf(mode), b=$('listShare'); if(!L.ids.length){b.textContent='Список пуст';setTimeout(()=>b.textContent='Поделиться',2000);return}
+  const minAlt=mode=='photo'?PHOTO_ALT:VISUAL_ALT;
+  const lines=L.ids.map(id=>BYID[id]).filter(Boolean).map(o=>{const s=lastNight&&stats(o,lastNight.n,minAlt);
+    return `• ${o.id}${o.name?' · '+o.name:''}${s?.h?` — лучше всего в ${lastNight.hm(s.tMax)}, высота ${Math.round(s.max)}°`:''}`});
+  const link=APP_URL+'#import='+encodeURIComponent(JSON.stringify({n:L.name,k:L.kind,ids:L.ids}));
+  const text=`Список «${L.name}» (${L.kind=='photo'?'астрофото':'визуал'}), ${$('setupSum').textContent}:
+${lines.join('\n')}
+
+Открыть список в приложении «Темная ночь»: ${link}`;
+  try{if(navigator.share){await navigator.share({title:'Список «'+L.name+'»',text});return}}catch(e){if(e.name=='AbortError')return}
+  try{await navigator.clipboard.writeText(text); b.textContent='Скопировано'}catch{b.textContent='Не удалось'}
+  setTimeout(()=>b.textContent='Поделиться',2500)};
+// открыли ссылку «Поделиться» — предлагаем добавить список (объекты, которых нет в каталоге этой версии, пропускаем)
+(()=>{const m=location.hash.match(/^#import=(.+)$/); if(!m)return;
+  history.replaceState(null,'',location.pathname+location.search);
+  try{const d=JSON.parse(decodeURIComponent(m[1])), kind=MODES.includes(d.k)?d.k:'visual';
+    const ids=[...new Set((Array.isArray(d.ids)?d.ids:[]).filter(id=>typeof id=='string'&&BYID[id]))];
+    const name=String(d.n||'Список').slice(0,40);
+    if(!ids.length)return;
+    // плашка над списком вместо системного окна: «Добавить» или «Нет»
+    const bar=document.createElement('div'); bar.className='importbar'; bar.setAttribute('role','alert');
+    bar.innerHTML=`<span>Вам прислали список «${esc(name)}»: ${ids.length} ${plural(ids.length,'объект','объекта','объектов')}, ${kind=='photo'?'астрофото':'визуал'}. Добавить в ваши планы?</span>
+      <button type="button" class="more" data-ok>Добавить</button><button type="button" class="more" data-no>Нет</button>`;
+    document.querySelector('.mode').before(bar);
+    bar.onclick=e=>{if(e.target.dataset.ok!=null){const l={id:newId(),name,kind,ids}; lists.push(l); curList[kind]=l.id; mode=kind; tab='plan'; saveLocal(); pushCloud(); render(); bar.remove()}
+      else if(e.target.dataset.no!=null) bar.remove()};
+  }catch{}})();
 $('listDel').onclick=()=>{const b=$('listDel');
   if(b.textContent!='Точно удалить?'){b.textContent='Точно удалить?'; setTimeout(()=>b.textContent='Удалить список',3000); return}
   b.textContent='Удалить список'; const L=listOf(mode); lists=lists.filter(l=>l!=L); curList[mode]=null; saveLocal(); pushCloud(); render()};
@@ -1292,5 +1339,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 19 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 20 от 12.11.2026";v.hidden=false}</script>
 </body></html>
