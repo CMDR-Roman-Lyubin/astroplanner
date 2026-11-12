@@ -1760,9 +1760,15 @@ $('sensor').onchange=$('focal').oninput=()=>{syncScope();render()};
 // Популярные трубы: [название, апертура мм, фокусное мм]. Визуал — заполняет апертуру и фокусное телескопа, астрофото — фокусное для съёмки
 // (сенсор — отдельно; с редуктором или корректором фокусное другое — поправьте вручную)
 const OTAS=[['Рефракторы',[['William Optics RedCat 51',51,250],['William Optics RedCat 61',61,300],['William Optics Zenithstar 61',61,360],['William Optics Zenithstar 73',73,430],
-    ['William Optics GT81',81,478],['Askar FRA400',72,400],['Askar FRA500',90,500],['Askar FRA600',108,600],['Sharpstar 61EDPH',61,335],
+    ['William Optics GT81',81,478],['Sharpstar 61EDPH',61,335],
     ['Sky-Watcher Evostar 72ED',72,420],['Sky-Watcher Evostar 80ED',80,600],['Sky-Watcher Evostar 100ED',100,900],
     ['Sky-Watcher Esprit 80ED',80,400],['Sky-Watcher Esprit 100ED',100,550],['Sky-Watcher Esprit 120ED',120,840],['Sky-Watcher Esprit 150ED',150,1050]]],
+  // Askar — по данным продавцов (Agena, High Point Scientific), ноябрь 2026; у FMA число в названии — фокусное
+  ['Askar',[['Askar FMA135',30,135],['Askar FMA180 Pro',40,180],['Askar FMA230',50,230],['Askar SQA55',55,264],['Askar SQA85',85,408],['Askar SQA106',106,580],
+    ['Askar FRA400',72,400],['Askar FRA500',90,500],['Askar FRA600',108,600],
+    ['Askar 65PHQ',65,416],['Askar 65PHQ + редуктор 0,75',65,312],['Askar 71F',71,490],['Askar 80PHQ',80,600],['Askar 91F',91,609],['Askar 91F + редуктор 0,75',91,455],
+    ['Askar 107PHQ',107,749],['Askar 130PHQ',130,1000],['Askar 130PHQ + редуктор 0,7',130,700],['Askar 151PHQ',151,1057],
+    ['Askar 103APO',103,700],['Askar 120APO',120,840],['Askar 140APO',140,980]]],
   ['Ньютоны',[['Sky-Watcher 130/650 (130PDS)',130,650],['Sky-Watcher 150/750 (150PDS)',150,750],['Sky-Watcher Quattro 200 f/4',200,800],
     ['Sky-Watcher 200/1000 (200PDS)',200,1000],['Sky-Watcher Quattro 250 f/4',254,1000],['Sky-Watcher 254/1200',254,1200]]],
   ['Добсоны',[['Добсон 6″ 153/1200',153,1200],['Добсон 8″ 203/1200',203,1200],['Добсон 10″ 254/1200',254,1200],['Добсон 12″ 305/1500',305,1500],
