@@ -1096,16 +1096,12 @@ function drawMap(n,lat,hm,L){
     <div id="mapList">${listHtml}</div>`;
 }
 let mapArgs=null, mapRaf=0;
-// на весь экран: слой карты поверх страницы + системный полноэкранный режим для всего документа (прячет строку состояния и кнопки Android).
-// Полноэкранным делаем документ, а не саму карту — иначе красный ночной фильтр (body::after) её не накроет
+// на весь экран: слой карты поверх страницы. Системный полноэкранный режим не включаем — Android при нём показывает
+// плашку «чтобы выйти, проведите…», и она закрывает ползунок яркости внизу
 function setMapFull(on,fromHistory){mapFull=on; $('map').classList.toggle('full',on);
   // запись в истории: жест «назад» Android сворачивает карту, а не закрывает приложение
   if(on&&!fromHistory) history.pushState({mapFull:1},''); else if(!on&&!fromHistory&&history.state?.mapFull) history.back();
-  try{if(on&&!document.fullscreenElement) document.documentElement.requestFullscreen?.({navigationUI:'hide'})?.catch(()=>{});
-    if(!on&&document.fullscreenElement) document.exitFullscreen?.().catch(()=>{})}catch{}
   if(!on) $('map').scrollIntoView({block:'start'}); mapRedraw()}
-// вышли из полноэкранного режима жестом «назад» — сворачиваем и слой карты
-document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&mapFull) setMapFull(false)});
 addEventListener('popstate',()=>{if(mapFull) setMapFull(false,true)});
 addEventListener('resize',()=>{if(mapFull) mapRedraw()}); // поворот экрана
 const mapRedraw=()=>{if(!mapRaf&&mapArgs) mapRaf=requestAnimationFrame(()=>{mapRaf=0; drawMap(...mapArgs)})};
@@ -1446,5 +1442,5 @@ if(!window.claude&&location.protocol.startsWith('http')&&'serviceWorker' in navi
 }
 </script>
 
-<script>{const v=document.getElementById('ver');v.textContent="Версия 29 от 12.11.2026";v.hidden=false}</script>
+<script>{const v=document.getElementById('ver');v.textContent="Версия 30 от 12.11.2026";v.hidden=false}</script>
 </body></html>
