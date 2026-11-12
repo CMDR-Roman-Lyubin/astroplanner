@@ -118,6 +118,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .hzcross::before,.hzcross::after{content:"";position:absolute;background:var(--accent)}.hzcross::before{left:-40px;right:-40px;top:30px;height:2px}.hzcross::after{top:-40px;bottom:-40px;left:30px;width:2px}
 .hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .hzpanel p{margin:4px 0}
+.log button.stell{flex-basis:100%;color:var(--fg)}
 .magtip{font-size:13px;color:var(--fg)}
 .flipsel{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .ref img[src*="skyview"],image[href*="skyview"]{filter:contrast(1.15) brightness(.92)}
@@ -298,6 +299,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     </select></label>
     </div></details>
     <details class="sgrp"><summary>Рекомендации</summary><div class="sgrid">
+    <label>Кнопка «Скопировать для Stellarium»<input id="stellBtn" type="checkbox"></label>
     <label>Снятое и просмотренное в рекомендациях<select id="doneF">
       <option value="">показывать вместе со всем</option>
       <option value="hide">скрывать</option>
@@ -1159,6 +1161,7 @@ const shotImg=o=>{const i=log[o.id]?.photo?.img; return /^[\w-]{1,64}$/.test(i||
 // из ночей — их читают отметки и старые версии. done — дата последней ночи: по ней журнал и фильтры
 const fmtH=h=>fmtR(+(+h||0).toFixed(2));
 function projHead(e){const sum=+e.exp||0, g=+e.goal||0, k=e.nights?.length||0;
+  if(!k&&!sum) return `Ночей съёмки пока нет${g?` · цель ${fmtH(g)} ч`:''}`;
   return `Снято ${fmtH(sum)} ч${k?` за ${k} ${plural(k,'ночь','ночи','ночей')}`:''}${g?` из ${fmtH(g)} ч — ${Math.min(100,Math.round(sum/g*100))}%${sum>=g?' ✓ цель достигнута':''}`:''}`
     +(g?`<progress max="${g}" value="${Math.min(sum,g)}"></progress>`:'')}
 function projHtml(e){
@@ -1257,7 +1260,7 @@ $('setupList').onclick=e=>{const b=e.target.closest('button'); if(!b) return;
   const x=setups[+b.dataset.setup]; if(!x) return;
   for(const k of SETUP_KEYS) $(k).value=x[k]??''; myEps=(x.eps||[]).map(e=>({...e})); $('oiii').checked=!!x.oiii;
   syncScope(); drawEps(); render()};
-$('oiii').checked=!!saved.oiii; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
+$('oiii').checked=!!saved.oiii; $('stellBtn').checked=!!saved.stellBtn; $('stellBtn').onchange=render; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
 $('magMin').value=saved.magMin??MAG_LO; $('magMax').value=saved.magMax??MAG_HI;
@@ -1409,6 +1412,14 @@ function photoTips(o,n,r,bortle,hm,lat){const t=transitT(o,n), h=Math.round(90-M
   const mer=!t?'':transitDark(o,n)?`Через меридиан проходит в ${hm(t)} на высоте ${h}°: на экваториальной монтировке около этого времени переворот (meridian flip) — до него объект на востоке, после на западе.${h>=80?' Почти через зенит — азимутальные монтировки (и смарт-телескопы) у зенита теряют сопровождение.':''} `
     :`Меридиан проходит в ${hm(t)}, вне тёмного времени — переворот этой ночью не понадобится. `;
   return `<p class="magtip">${mer}${filterTip(o,n,r,bortle)}</p>`}
+// Обозначение для поиска в Stellarium (там наводится монтировка): у туманностей и галактик — номер по каталогу, а не координаты —
+// Stellarium возьмёт свои точные; у двойных — английское имя или обозначение звезды, у переменных и углеродных — по GCVS («R Leo»)
+const stellName=o=>{if(!o.star) return o.id.split('/')[0];
+  return o.type=='DBL'?(o.en||'').split('|')[0]||o.d.desig||o.id.replace(/ [A-Z]{2,}$/,''):o.id};
+const STELL_BTN='📋 Скопировать для Stellarium';
+async function copyText(t){try{await navigator.clipboard.writeText(t); return true}catch{}
+  const a=document.createElement('textarea'); a.value=t; a.style.cssText='position:fixed;opacity:0'; document.body.append(a); a.select();
+  let ok=false; try{ok=document.execCommand('copy')}catch{} a.remove(); return ok}
 const ucf=t=>t?t[0].toUpperCase()+t.slice(1):'';
 const ratingHtml=e=>`<label class="rating">Моя оценка<input type="range" data-act="rating" min="0" max="10" step="0.5" value="${+e.rating||0}"><output>${e.rating?fmtR(e.rating)+' из 10':'нет'}</output></label>`;
 // Похожие объекты — для высоко оценённых (больше 8): тот же тип, близкие размер и блеск, ещё не снятые/не просмотренные,
@@ -1614,7 +1625,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1717,6 +1728,7 @@ function render(){
       <h4 class="sec">Снимок</h4>
       ${refImg(o,kind,fov,r.fill)}${kind=="photo"&&fov&&window.claude?frameHtml(o,fov,r.fill):""}
     </div><div class="log" data-kind="${kind}"><h4 class="sec">Мои отметки</h4>
+      ${$('stellBtn').checked?`<button type="button" data-act="stell" class="stell">${STELL_BTN}</button>`:''}
       <span class="lbl">В план:</span>${kindLists.map(l=>`<button type="button" data-act="list" data-list="${l.id}" aria-pressed="${l.ids.includes(o.id)}">${esc(l.name)}</button>`).join('')}
       ${kind=='photo'?`<button type="button" data-act="done" aria-pressed="${!!e.done}">Снято</button>`:''}
       ${ratingHtml(e)}${similarHtml(o,kind,e,lat)}
@@ -1763,6 +1775,8 @@ function logChanged(card){const id=card.dataset.id, e=log[id];
 $('list').onclick=ev=>{const b=ev.target.closest('button[data-act]'); if(!b)return;
   if(b.dataset.act=='more'){shown+=15; render(); return}
   const card=b.closest('details'), box=b.closest('.log'), kind=box.dataset.kind, act=b.dataset.act;
+  if(act=='stell'){const t=stellName(BYID[card.dataset.id]);
+    copyText(t).then(ok=>{b.textContent=ok?`Скопировано «${t}» — в Stellarium: поиск → вставить`:`Не удалось скопировать — найдите в Stellarium «${t}»`; setTimeout(()=>b.textContent=STELL_BTN,5000)}); return}
   if(act=='find'){$('q').value=b.dataset.id; tab='rec'; render(); $('q').scrollIntoView({block:'start'}); return} // похожий объект — открываем его карточку
   if(act=='list'){const l=lists.find(x=>x.id==b.dataset.list); if(!l)return; const id=card.dataset.id;
     l.ids=l.ids.includes(id)?l.ids.filter(x=>x!=id):[...l.ids,id]; b.setAttribute('aria-pressed',l.ids.includes(id));
