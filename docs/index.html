@@ -119,6 +119,11 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .hzpanel p{margin:4px 0}
 .log button.stell{flex-basis:100%;color:var(--fg)}
+.mntbar{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}
+.mntbar label{flex-direction:row;align-items:center;gap:8px;font-size:13px}.mntbar select{flex:1}
+.mntbar input[type=range]{flex:1;padding:0;border:0;background:none;accent-color:var(--accent)}
+.mntk{display:inline-block;min-width:1.5em;margin-right:6px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--bg);text-align:center}
+.facts.mnt{color:var(--fg)}.mntnote{grid-column:1/-1}
 .magtip{font-size:13px;color:var(--fg)}
 .flipsel{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .ref img[src*="skyview"],image[href*="skyview"]{filter:contrast(1.15) brightness(.92)}
@@ -300,6 +305,14 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <option value="best">Точная (модель ≈250 МБ)</option>
     </select></label>
     </div></details>
+    <details class="sgrp"><summary>Монтировка (GoTo)</summary><div class="sgrid">
+    <label>Азимутальная монтировка с ограничением поворота<input id="mntOn" type="checkbox"></label>
+    <label>Домашнее положение смотрит на<select id="mntHome"><option value="0">С (0°)</option><option value="45">СВ (45°)</option><option value="90">В (90°)</option><option value="135">ЮВ (135°)</option><option value="180">Ю (180°)</option><option value="225">ЮЗ (225°)</option><option value="270">З (270°)</option><option value="315">СЗ (315°)</option></select></label>
+    <label>Поворот от дома, ±°<input id="mntLim" type="number" min="90" max="360" step="5" placeholder="180"></label>
+    <label>Наибольшая высота, °<input id="mntAlt" type="number" min="30" max="90" step="1" placeholder="87"></label>
+    <label>Скорость наведения, °/с<input id="mntRate" type="number" min="0.5" max="20" step="0.5" placeholder="4"></label>
+    <p class="sub mntnote">Для OnStep: MOUNT_TYPE ALTAZM, поворот — AXIS1_LIMIT_MIN/MAX, высота — AXIS2_LIMIT_MAX, скорость — SLEW_RATE_BASE_DESIRED. Тогда на вкладке «Планы» можно включить порядок обхода, при котором монтировка не крутится через ограничение (провод).</p>
+    </div></details>
     <details class="sgrp"><summary>Рекомендации</summary><div class="sgrid">
     <label>Кнопка «Скопировать для Stellarium»<input id="stellBtn" type="checkbox"></label>
     <label>Снятое и просмотренное в рекомендациях<select id="doneF">
@@ -342,6 +355,11 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
       <button type="button" id="listNew">Новый список</button>
       <button type="button" id="listShare">Поделиться</button>
       <button type="button" id="listDel">Удалить список</button>
+    </div>
+    <div class="mntbar" id="mntBar" hidden>
+      <label>Порядок<select id="mntOrd"><option value="">по времени лучшей высоты</option><option value="m">для монтировки — без лишних поворотов</option></select></label>
+      <label id="mntTbox">Время: <strong id="mntTime"></strong><input type="range" id="mntT" aria-label="Время, на которое считается порядок"></label>
+      <p class="sub" id="mntSum"></p>
     </div>
   </div>
   <div class="qrow" id="qrow">
@@ -1263,6 +1281,9 @@ $('setupList').onclick=e=>{const b=e.target.closest('button'); if(!b) return;
   const x=setups[+b.dataset.setup]; if(!x) return;
   for(const k of SETUP_KEYS) $(k).value=x[k]??''; myEps=(x.eps||[]).map(e=>({...e})); $('oiii').checked=!!x.oiii;
   syncScope(); drawEps(); render()};
+{const m=saved.mnt||{}; $('mntOn').checked=!!m.on; $('mntHome').value=m.home??0; $('mntLim').value=m.lim||180; $('mntAlt').value=m.alt||87; $('mntRate').value=m.rate||4; $('mntOrd').value=m.ord||''}
+for(const id of ['mntOn','mntHome','mntOrd']) $(id).onchange=render; for(const id of ['mntLim','mntAlt','mntRate']) $(id).oninput=render;
+$('mntT').oninput=e=>{mapIdx=+e.target.value; if(!mntRaf) mntRaf=requestAnimationFrame(()=>{mntRaf=0; render()})};
 $('oiii').checked=!!saved.oiii; $('stellBtn').checked=!!saved.stellBtn; $('stellBtn').onchange=render; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
@@ -1508,11 +1529,41 @@ const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
 let mapK=1; // высота области карты к ширине: 1 — квадрат, на весь экран — пропорции экрана
 function clampView(){const v=mapView; v.z=clamp(v.z,1,ZMAX); const h=200/v.z, hh=h*mapK;
   v.cx=clamp(v.cx,h,400-h); v.cy=hh>=200?200:clamp(v.cy,hh,400-hh)}
+// ---------- Порядок обхода для GoTo-монтировки с ограничением поворота (азимутальная, например OnStep ALTAZM) ----------
+// Ось азимута уходит от дома не дальше ±lim° (иначе перекрутится провод), поэтому два соседних на небе объекта по разные стороны
+// «шва» (дом + 180°) для монтировки — почти полный оборот. Считаем в координатах монтировки: азимут от дома, перегон = max(|Δаз|, |Δвыс|),
+// оси двигаются одновременно. Обход — ближайший сосед из дома, затем 2-opt (переворот отрезков, пока перегонов становится меньше)
+const mntCfg=()=>({on:$('mntOn').checked,home:+$('mntHome').value||0,lim:clamp(+$('mntLim').value||180,90,360),
+  altMax:clamp(+$('mntAlt').value||87,30,90),rate:clamp(+$('mntRate').value||4,.5,20)});
+function mntWalk(seq){let u=0,a=null,tot=0; const st=[];
+  for(const p of seq){const nu=p.us.reduce((b,c)=>Math.abs(c-u)<Math.abs(b-u)?c:b), du=nu-u, da=a==null?0:p.alt-a, c=Math.max(Math.abs(du),Math.abs(da));
+    tot+=c; st.push({...p,u:nu,du,da,c}); u=nu; a=p.alt}
+  return {tot,st}}
+function mntOrder(objs,lat,L,cfg,hz,minAlt=0){const pos=[], skip=[];
+  for(const o of objs){const al=alt(lat,L,o), az=azOf(lat,L,o), d=((az-cfg.home)%360+540)%360-180;
+    const us=[d,d+360,d-360].filter(u=>Math.abs(u)<=cfg.lim);
+    if(al<0||hz&&al<hzAt(hz,az)) skip.push({o,why:'сейчас ниже горизонта или за препятствием'});
+    else if(al<minAlt) skip.push({o,why:`сейчас низко — ${Math.round(al)}° (смотреть стоит от ${minAlt}°)`});
+    else if(al>cfg.altMax) skip.push({o,why:`сейчас выше ${cfg.altMax}° — монтировка туда не поднимется`});
+    else if(!us.length) skip.push({o,why:'за пределом поворота монтировки'});
+    else pos.push({o,us,alt:al,az})}
+  let seq=[], rest=pos.slice();
+  while(rest.length){const w=mntWalk(seq).tot; let bi=0,bc=1e9; rest.forEach((p,i)=>{const c=mntWalk([...seq,p]).tot-w; if(c<bc){bc=c;bi=i}}); seq.push(rest.splice(bi,1)[0])}
+  for(let better=true,pass=0;better&&pass<20;pass++){better=false; let best=mntWalk(seq).tot;
+    for(let i=0;i<seq.length-1;i++) for(let j=i+1;j<seq.length;j++){const t=[...seq.slice(0,i),...seq.slice(i,j+1).reverse(),...seq.slice(j+1)], c=mntWalk(t).tot;
+      if(c<best-.5){seq=t; best=c; better=true}}}
+  return {...mntWalk(seq),skip,naive:mntWalk(pos.slice().sort((a,b)=>a.o._t-b.o._t)).tot}}
+// самопроверка: дом на севере, объекты на азимутах 90°, 175° и 185° (по разные стороны «шва»): от 175° к 185° — 350°, а не 10°
+{const w=mntWalk([{us:[90],alt:30},{us:[175],alt:30},{us:[-175],alt:30}]);
+ console.assert(w.tot==90+85+350,'перегон через «шов» — почти полный оборот')}
+let mntRaf=0;
+// момент ночи для карты и для порядка — общий: «сейчас», если темно, иначе середина ночи; ползунки его двигают
+function nightIdx(n,lat){const d0=n.dark[0].i, d1=n.dark[n.dark.length-1].i, key=lat+'|'+n.s[0].t;
+  if(key!=mapKey||mapIdx==null){mapKey=key; const nowI=Math.round((Date.now()-n.s[0].t)/STEP); mapIdx=nowI>=d0&&nowI<=d1?nowI:(d0+d1)>>1}
+  mapIdx=clamp(mapIdx,d0,d1); return [d0,d1]}
 let mapProj=null; // текущая проекция — для перехода к объекту по нажатию в списке
 function drawMap(n,lat,hm,L){
-  const d0=n.dark[0].i, d1=n.dark[n.dark.length-1].i, key=lat+'|'+n.s[0].t;
-  // новая ночь или место — ставим «сейчас», если сейчас темно, иначе середину ночи
-  if(key!=mapKey||mapIdx==null){mapKey=key; const nowI=Math.round((Date.now()-n.s[0].t)/STEP); mapIdx=nowI>=d0&&nowI<=d1?nowI:(d0+d1)>>1}
+  const [d0,d1]=nightIdx(n,lat);
   const x=n.s[mapIdx], Lst=x.L, sl=sin(lat), cl=cos(lat), R0=190, dd=days(x.t);
   // экваториальные → [x,y] на карте или null под горизонтом
   const P=(ra,dec)=>{const H=(Lst-ra)*R, sd=sin(dec), cd=cos(dec), sa=sl*sd+cl*cd*Math.cos(H);
@@ -1628,7 +1679,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,ota:otaV,otaPh:otaPhV,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,mnt:{on:$('mntOn').checked,home:+$('mntHome').value,lim:+$('mntLim').value,alt:+$('mntAlt').value,rate:+$('mntRate').value,ord:$('mntOrd').value},ota:otaV,otaPh:otaPhV,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1694,9 +1745,20 @@ function render(){
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?isDone(o)
     :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
-  const all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
+  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
     .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
+  const mc=mntCfg(), useM=mine=='plan'&&!q&&mc.on&&$('mntOrd').value=='m';
+  $('mntBar').hidden=tab!='plan'||!mc.on; $('mntTbox').hidden=!useM;
+  if(useM){const [a0,a1]=nightIdx(n,lat), x=n.s[mapIdx], byId=new Map(all.map(r=>[r.o.id,r]));
+    for(const r of all) r.o._t=order(r);
+    const t=$('mntT'); t.min=a0; t.max=a1; t.value=mapIdx; $('mntTime').textContent=hm(x.t);
+    const m=mntOrder(all.map(r=>r.o),lat,x.L,mc,n.hz,minAlt), sec=c=>c/mc.rate+(c>1?2:0); // +2 с на разгон и торможение
+    all=[...m.st.map((p,k)=>Object.assign(byId.get(p.o.id),{mnt:{k:k+1,du:p.du,da:p.da,c:p.c,sec:sec(p.c)}})),...m.skip.map(z=>Object.assign(byId.get(z.o.id),{mnt:{why:z.why}}))];
+    const total=m.st.reduce((a,p)=>a+sec(p.c),0);
+    $('mntSum').textContent=m.st.length?`На ${hm(x.t)}: ${m.st.length} ${plural(m.st.length,'объект','объекта','объектов')} по порядку из домашнего положения (${dir16(mc.home)}), повороты всего ${Math.round(m.tot)}° — около ${Math.max(1,Math.round(total/60))} мин наведения${m.naive>m.tot+5?`; по времени лучшей высоты было бы ${Math.round(m.naive)}°`:''}.${m.skip.length?` В конце — недоступные сейчас (${m.skip.length}).`:''}`
+      :'Сейчас ни один объект списка недоступен монтировке — передвиньте время.'}
+  else $('mntSum').textContent=mine=='plan'&&mc.on?'Включите «для монтировки» — список выстроится так, чтобы монтировка шла без лишних оборотов и не упиралась в ограничение поворота.':'';
   const rows=all.slice(0,q?30:mine?999:shown);
   const kindLists=lists.filter(l=>l.kind==kind);
   $('list').innerHTML=rows.length?rows.map((r,ri)=>{const o=r.o;
@@ -1710,9 +1772,10 @@ function render(){
     const e=log[o.id]?.[kind]||{}, si=o.star?starInfo(o,n,hm,bortle,aperture):null;
     // нашли поиском один объект или точный номер — карточка сразу раскрыта, чтобы снимок был виден без лишнего нажатия
     return `${dh}<details data-id="${esc(o.id)}"${q&&(rows.length==1||exact(o)>=2)?' open':''}><summary>
-      <span class="name">${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
+      <span class="name">${r.mnt?.k?`<b class="mntk">${r.mnt.k}</b>`:''}${o.id}${o.name?' · '+esc(o.name):''}<small>${TYPES[o.type]}${o.con?', '+o.con:''}</small><small class="marks">${esc(marks(o.id))}</small></span>
       <span class="score ${r.score>=75?'hi':r.score>=50?'mid':'lo'}" title="Оценка из 100">${Math.round(r.score)}</span>
       <span class="facts">${r.h?`${hm(r.from)}–${hm(r.to)} · ${r.h.toFixed(1)} ч выше ${minAlt}°`:n.hz&&r.max>=minAlt?`этой ночью закрыт вашими деревьями и домами`:`этой ночью не поднимается выше ${minAlt}° в темноте`} · макс. ${Math.round(r.max)}° в ${hm(r.tMax)}</span>
+      ${r.mnt?`<span class="facts mnt">${r.mnt.why?'⏸ '+r.mnt.why:`↻ ${r.mnt.k==1?'от дома ':''}по азимуту ${Math.round(Math.abs(r.mnt.du))}° ${r.mnt.du>=0?'по часовой':'против часовой'}${r.mnt.k>1?`, по высоте ${Math.round(Math.abs(r.mnt.da))}°`:''} · ≈${Math.round(r.mnt.sec)} с${Math.abs(r.mnt.du)>180?' <span class="warn">— долгий разворот в обход ограничения</span>':''}`}</span>`:''}
       <span class="facts">${o.star?si[0]:physLine(o)}${r.fill!=null?' · '+fillNote(o,r.fill,fov):''}</span>
     </summary><div class="chart">
       <h4 class="sec">Ночь</h4>
