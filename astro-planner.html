@@ -120,6 +120,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .mntbar input[type=range]{flex:1;padding:0;border:0;background:none;accent-color:var(--accent)}
 .mntk{display:inline-block;min-width:1.5em;margin-right:6px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--bg);text-align:center}
 .facts.mnt{color:var(--fg)}.mntnote{grid-column:1/-1}
+.userload{margin-top:8px}.userload input{padding:6px 0;border:0;background:none}
 .magtip{font-size:13px;color:var(--fg)}
 .flipsel{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .ref img[src*="skyview"],image[href*="skyview"]{filter:contrast(1.15) brightness(.92)}
@@ -311,6 +312,11 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     </div></details>
     <details class="sgrp"><summary>Рекомендации</summary><div class="sgrid">
     <label>Кнопка «Скопировать для Stellarium»<input id="stellBtn" type="checkbox"></label>
+    <fieldset class="catsel" id="usersel"><legend>Свои каталоги — только на этом устройстве</legend>
+      <div class="cats" id="userList"></div>
+      <label class="userload">Загрузить каталог (файл .json)<input id="userFile" type="file" accept=".json,application/json"></label>
+      <p class="sub" id="userSt">Каталог хранится только в этом браузере или приложении на телефоне и никуда не отправляется. Объекты появятся в визуале отдельной категорией.</p>
+    </fieldset>
     <label>Снятое и просмотренное в рекомендациях<select id="doneF">
       <option value="">показывать вместе со всем</option>
       <option value="hide">скрывать</option>
@@ -636,6 +642,20 @@ if(HAS_STARS){
   for(const l of CARBON_STARS.split('\n')){const [id,ru,ra,dec,v,sp,en]=l.split(';');
     CATALOG.push({id,name:ru,type:'CS',con:'',ra:+ra,dec:+dec,mag:+v,a:.1,b:.1,cats:0,alias:'',en,star:true,carbon:true,v:{sp}})}
 }
+// ---------- Свои каталоги: файл JSON загружается в настройках и хранится только на этом устройстве (localStorage «skyusercat»),
+// в приложение и репозиторий не попадает. Формат: {name, type, objects:[{id, name, en, con, ra°, dec°, a′, b′, desc}]}
+let userCats=[]; try{userCats=JSON.parse(localStorage.getItem('skyusercat')||'[]').filter(c=>c&&Array.isArray(c.objects))}catch{}
+const USER_TYPES=new Set(['AST']);
+// данные из чужого файла: только известные поля, строки обрезаны, числа проверены
+function cleanUserCat(c){const str=(x,n)=>typeof x=='string'?x.slice(0,n):'', num=(x,a,b)=>Number.isFinite(+x)&&+x>=a&&+x<=b?+x:null;
+  const type=USER_TYPES.has(c?.type)?c.type:'AST', objects=[];
+  for(const o of Array.isArray(c?.objects)?c.objects.slice(0,5000):[]){const ra=num(o?.ra,0,360), dec=num(o?.dec,-90,90), id=str(o?.id,40).trim();
+    if(ra==null||dec==null||!id) continue;
+    objects.push({id,name:str(o.name,80),en:str(o.en,200),con:str(o.con,4),ra,dec,a:num(o.a,.1,600)||10,b:num(o.b,.1,600)||num(o.a,.1,600)||10,desc:str(o.desc,2000)})}
+  return {name:str(c?.name,60)||'Свой каталог',source:str(c?.source,200),type,objects}}
+const usedIds=new Set(CATALOG.map(o=>o.id));
+for(const c of userCats) for(const u of cleanUserCat(c).objects){const id=usedIds.has(u.id)?u.id+' ('+c.name+')':u.id; usedIds.add(id);
+  CATALOG.push({id,name:u.name==u.id?'':u.name,type:c.type||'AST',con:u.con,ra:u.ra,dec:u.dec,mag:NaN,a:u.a,b:u.b,cats:0,alias:'',en:u.en,star:true,user:c.name,desc:u.desc})}
 const norm=s=>s.toLowerCase().replace(/\s+/g,'');
 for(const o of CATALOG){o.keys=[o.id,...o.alias.split(',').filter(Boolean)].map(norm); o.key=o.keys.join('|')+'|'+norm(o.name)
   +'|'+norm((typeof CAT_EN=='object'&&CAT_EN[o.id])||o.en||''); // английские названия — только для поиска
@@ -643,10 +663,10 @@ for(const o of CATALOG){o.keys=[o.id,...o.alias.split(',').filter(Boolean)].map(
 
 const BYID=Object.fromEntries(CATALOG.map(o=>[o.id,o]));const TYPES={G:'галактика',EN:'эмиссионная туманность',RN:'отражательная туманность',SNR:'остаток сверхновой',
   PN:'планетарная туманность',OC:'рассеянное скопление',GC:'шаровое скопление',DN:'тёмная туманность',GG:'группа галактик',
-  DBL:'двойная звезда',VAR:'переменная звезда',CS:'углеродная звезда'};
+  DBL:'двойная звезда',VAR:'переменная звезда',CS:'углеродная звезда',AST:'астеризм'};
 // Насколько Луна портит съёмку: эмиссионные объекты спасает узкополосный фильтр, галактики и пыль — нет.
-const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5,DN:1,GG:1,DBL:.1,VAR:.1,CS:.1};
-const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45,DN:.8,GG:.8,DBL:.1,VAR:.1,CS:.1};
+const MOON_SENS={G:1,RN:1,EN:.35,SNR:.35,PN:.35,OC:.5,GC:.5,DN:1,GG:1,DBL:.1,VAR:.1,CS:.1,AST:.3};
+const PHOTO_TYPE={G:1,EN:1,RN:1,SNR:1,PN:1,GC:.7,OC:.45,DN:.8,GG:.8,DBL:.1,VAR:.1,CS:.1,AST:.1};
 const SKY=[0,22,21.9,21.6,21,20.2,19.3,18.6,18,17.5]; // яркость неба по Бортлю, mag/arcsec²
 const PHOTO_ALT=25, VISUAL_ALT=20; // 25°, а не 30°: иначе с широты Москвы выпадает M42
 
@@ -772,7 +792,7 @@ function photoScore(o,n,fov){const s=stats(o,n,PHOTO_ALT);
   const fill=fov?Math.max(o.a/fov[0],o.b/fov[1]):null;
   // мелкий объект в широком кадре — степень .75 (при 10% кадра остаётся четверть), шире кадра — нужна мозаика
   const fit=fov?(fill<=.6?Math.max(.05,(fill/.6)**.75):fill<=1?1-.5*(fill-.6):.8/fill):clamp(Math.log10(o.a)/Math.log10(180));
-  const bright=.8+.2*clamp((18-surfB(o))/6); // тусклые объекты требуют больше выдержки
+  const bright=(.8+.2*clamp((18-surfB(o))/6))||.8; // тусклые объекты требуют больше выдержки; у астеризмов блеска нет
   // 100 = восемь часов высоко в темноте без Луны, объект в размер кадра и яркий. Корень — чтобы короткие летние ночи не обнуляли весь список
   // блеск не из каталога, а оценка по типу (тусклые области HII, тёмные туманности) — не ставим такие выше проверенных
   return {...s,fill,score:100*Math.sqrt(Math.min(s.h,8)/8)*(.6+.4*altTerm(s.max))*(1-.8*moon)*(.3+.7*fit*PHOTO_TYPE[o.type])*bright*(o.est?.8:1)};
@@ -815,6 +835,7 @@ function starScore(o,n,bortle,aperture){const s=stats(o,n,VISUAL_ALT);
   else if(o.type=='VAR'){const now=varNow(o,s.tMax||n.dark[0]?.t), ecl=eclipses(o,n).length, cur=now?now.mag:(o.v.max+o.v.min)/2;
     // интереснее всего: минимум затменной этой ночью и мирида около максимума; остальные переменные — ниже, их место в своей категории
     f=(ecl?1.05:now&&/^M/.test(o.v.type)&&cur-o.v.max<1.5?.9:.6)*(o.carbon?1.05:1)*(cur<=lim?1:.25)*clamp((10-o.v.max)/6,.5,1)}
+  else if(o.type=='AST') f=.75*(.55+.45*clamp((s.max-20)/60)); // блеска нет — выше тот, что выше поднимается
   else f=.8*(o.mag<=lim?1:.25)*clamp((10-o.mag)/4,.5,1);
   // ×0,8: в общем списке туманности и галактики остаются впереди, звёзды — в своих категориях; минимум затменной этой ночью — исключение
   return {...s,score:Math.min(100,base*f*(o.type=='VAR'&&eclipses(o,n).length?1:.8))}}
@@ -824,6 +845,8 @@ const VTYPE={M:'мирида (долгопериодическая)',SRA:'пол
   DCEP:'цефеида',DCEPS:'цефеида',CEP:'цефеида',CW:'цефеида II типа',RCB:'типа R Северной Короны (внезапно гаснет)',NR:'повторная новая',
   UG:'карликовая новая',UGSS:'карликовая новая',UGZ:'карликовая новая',ZAND:'симбиотическая'};
 function starInfo(o,n,hm,bortle,aperture){const D=aperture>0?aperture:0;
+  if(o.type=='AST') return [`размер ${fmtR(o.a)}′${o.b!=o.a?'×'+fmtR(o.b)+'′':''}${o.a>=90?' — для бинокля':''} · каталог «${esc(o.user)}»`,
+    esc(o.desc||'описания нет').replace(/\.\s*$/,'')];
   if(o.type=='DBL'){const d=o.d, need=apRound(116/d.sep*1.3);
     return [`${o.d.desig&&o.d.desig!=o.name?o.d.desig+' · ':''}${f1(d.m1)}ᵐ + ${f1(d.m2)}ᵐ · расстояние ${fmtR(d.sep)}″${d.pa!=null?` · угол ${d.pa}°`:''}${d.sp?' · спектр '+esc(d.sp):''}`,
       need?`разделяется от ${need} мм${D?` (у вас ${D} мм — ${D>=need?'разделится':'не разделится'})`:''}`:'разделяется в любой телескоп, если пара шире 3″ — даже в бинокль']}
@@ -873,8 +896,8 @@ const MODES=['photo','visual'], TABS=['rec','plan','done','map'];
 // Типы объектов — как в фильтре Stellarium; выбрано несколько или ни одного (= все)
 const TYPE_PL={DN:'Тёмные туманности',EN:'Эмиссионные туманности',G:'Галактики',GC:'Шаровые скопления',GG:'Группы галактик',
   OC:'Рассеянные скопления',PN:'Планетарные туманности',RN:'Отражательные туманности',SNR:'Остатки сверхновых',
-  DBL:'Двойные звёзды',VAR:'Переменные звёзды',CARB:'Углеродные звёзды'}; // звёздные категории — только в визуале; CARB — по признаку, а не по типу
-const STAR_TYPES=new Set(['DBL','VAR','CARB']);
+  DBL:'Двойные звёзды',VAR:'Переменные звёзды',CARB:'Углеродные звёзды',AST:'Астеризмы'}; // звёздные категории — только в визуале; CARB — по признаку, а не по типу
+const STAR_TYPES=new Set(['DBL','VAR','CARB','AST']);
 let shown=15; // сколько рекомендаций показано; кнопка «Ещё» добавляет по 15, смена режима, раздела или фильтров — сбрасывает
 let types=new Set((saved.types||[]).filter(t=>t in TYPE_PL));
 
@@ -1227,7 +1250,7 @@ async function pushCloud(){
   }catch{}
 })();
 // кнопки типов: «Все» сбрасывает выбор, остальные включаются и выключаются по одной
-$('cats').innerHTML='<button type="button" data-type="">Все</button>'+Object.entries(TYPE_PL).map(([t,l])=>`<button type="button" data-type="${t}">${l}</button>`).join('');
+$('cats').innerHTML='<button type="button" data-type="">Все</button>'+Object.entries(TYPE_PL).filter(([t])=>!USER_TYPES.has(t)||CATALOG.some(o=>o.type==t)).map(([t,l])=>`<button type="button" data-type="${t}">${l}</button>`).join('');
 const syncTypes=()=>{for(const b of $('cats').children) b.setAttribute('aria-pressed',b.dataset.type?types.has(b.dataset.type):!types.size)};
 syncTypes();
 $('cats').onclick=e=>{const t=e.target.dataset?.type; if(t==null)return;
@@ -1280,6 +1303,19 @@ $('setupList').onclick=e=>{const b=e.target.closest('button'); if(!b) return;
 {const m=saved.mnt||{}; $('mntOn').checked=!!m.on; $('mntHome').value=m.home??0; $('mntLim').value=m.lim||180; $('mntAlt').value=m.alt||87; $('mntRate').value=m.rate||4; $('mntOrd').value=m.ord||''}
 for(const id of ['mntOn','mntHome','mntOrd']) $(id).onchange=render; for(const id of ['mntLim','mntAlt','mntRate']) $(id).oninput=render;
 $('mntT').oninput=e=>{mapIdx=+e.target.value; if(!mntRaf) mntRaf=requestAnimationFrame(()=>{mntRaf=0; render()})};
+function drawUserCats(){$('userList').innerHTML=userCats.length?userCats.map((c,i)=>`<span class="setupitem"><button type="button" disabled>${esc(c.name)} — ${c.objects.length}</button><button type="button" data-udel="${i}" aria-label="Удалить каталог ${esc(c.name)}">✕</button></span>`).join('')
+  :'<span class="sub">Пока нет.</span>'}
+drawUserCats();
+const saveUserCats=()=>{try{localStorage.setItem('skyusercat',JSON.stringify(userCats)); return true}catch{return false}};
+$('userFile').onchange=async e=>{const f=e.target.files[0]; if(!f) return; let c;
+  try{c=cleanUserCat(JSON.parse(await f.text()))}catch{$('userSt').textContent='Это не файл каталога (нужен JSON).'; return}
+  if(!c.objects.length){$('userSt').textContent='В файле нет объектов с координатами.'; return}
+  userCats=userCats.filter(x=>x.name!=c.name).concat(c); // тот же каталог ещё раз — заменяем
+  if(!saveUserCats()){$('userSt').textContent='Не хватило места в памяти браузера.'; return}
+  $('userSt').textContent=`Загружено: «${c.name}», ${c.objects.length} объектов. Перезапускаю…`; setTimeout(()=>location.reload(),600)};
+$('userList').onclick=e=>{const b=e.target.closest('[data-udel]'); if(!b) return;
+  if(b.textContent!='Точно?'){b.textContent='Точно?'; setTimeout(()=>b.textContent='✕',3000); return}
+  userCats.splice(+b.dataset.udel,1); saveUserCats(); location.reload()};
 $('oiii').checked=!!saved.oiii; $('stellBtn').checked=!!saved.stellBtn; $('stellBtn').onchange=render; $('asr').value=saved.asr=='best'?'best':'fast'; $('doneF').value=saved.doneF??(saved.hideDone?'hide':''); // раньше была галочка «скрывать»
 // Ползунки блеска на «Визуале»: крайние положения — без ограничения. Больше число — тусклее
 const MAG_LO=-1, MAG_HI=16;
@@ -1400,6 +1436,7 @@ function bestMag(o,D,oiii){
   if(!(D>0)||o.type=='DN') return null;
   const lo=D/7, hi=Math.min(2*D,300);
   if(o.type=='DBL'){const M=clamp(Math.max(240/o.d.sep,D/3),lo,hi); return {M,why:M>=hi?'больше не даст атмосфера и оптика':'пара разойдётся с запасом'}}
+  if(o.type=='AST'){const want=68/(1.5*o.a/60), M=clamp(want,lo,hi); return {M,why:want<lo?'астеризм крупный — нужно самое широкое поле, а то и бинокль':'астеризм займёт около двух третей поля'}}
   if(o.star) return {M:clamp(D/2.5,lo,hi),why:'зрачок 2–3 мм — цвет и блеск оценивать удобнее всего'};
   const sb=surfB(o)+8.89, pMin=oiii&&OIII_GAIN[o.type]&&!NO_OIII.has(o.id)?3:sb<20?.8:sb<21.5?1.5:sb<23?2.5:4, cap=Math.min(hi,D/pMin);
   const want=68/(3*Math.max(o.a,.2)/60), M=clamp(want,lo,Math.max(lo,cap));
@@ -1739,7 +1776,7 @@ function render(){
     $('progTxt').innerHTML=`${kind=='photo'?'Снято':'Просмотрено'} ${k} из ${N} (${Math.round(k/N*100)}%)<progress max="${N}" value="${k}"></progress>Ниже — объекты программы, доступные этой ночью${doneF=='hide'?', кроме уже отмеченных':''}.`}
   else $('progTxt').textContent='';
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?isDone(o)
-    :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||o.mag>=lo&&o.mag<=hi)&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
+    :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||!(o.mag<lo||o.mag>hi))&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
   let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
