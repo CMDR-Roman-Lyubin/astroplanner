@@ -838,6 +838,26 @@ function eclipses(o,n){const v=o.v; if(!v||!/^E[ABW]/.test(v.type)||!v.period||!
   for(let k=Math.ceil((a-v.epoch)/v.period);v.epoch+k*v.period<=b;k++) out.push((v.epoch+k*v.period-2440587.5)*864e5);
   return out}
 const telLim=(bortle,aperture)=>NELM[bortle]+5*Math.log10((aperture>0?aperture:150)/7)-.5; // предельная звёздная величина телескопа
+// ---------- Астеризмы: видны ли их звёзды этой ночью и помещаются ли в окуляр ----------
+// блеск звёзд фигуры из строки каталога («9–11», «8») → [самая яркая, самая слабая]; у личных объектов его может не быть
+const astMags=o=>{const v=(o.magTxt||'').match(/[\d.]+/g)?.map(Number)||[]; return v.length?[Math.min(...v),Math.max(...v)]:null};
+// предел телескопа этой ночью: апертура и засветка (telLim) минус засветка от Луны — как в needAperture
+const astLim=(n,bortle,aperture,moonFrac)=>telLim(bortle,aperture)-1.5*n.illum*moonFrac;
+// во сколько раз астеризм шире поля самого широкого окуляра (0 — окуляры или фокусное не заданы)
+const astOver=o=>{const F=+$('tfocal').value; return F>0&&myEps.length?o.a/60/Math.max(...myEps.map(e=>e.af*e.fe/F)):0};
+const astVis=(m,lim)=>!m?null:m[0]>lim?'hidden':m[1]<=lim-1?'ok':m[1]<=lim?'edge':'partial';
+function astFactor(o,s,n,bortle,aperture){const over=astOver(o);
+  return (.55+.45*clamp((s.max-20)/60))                       // выше поднимается — лучше
+    *({hidden:.1,ok:1,edge:.75,partial:.45}[astVis(astMags(o),astLim(n,bortle,aperture,s.moonFrac))]??.8) // нет блеска — нейтрально
+    *(over>1.5?.6:over>1?.8:1)}                                // шире самого широкого поля — только по частям
+// совет в «Как смотреть»: хватит ли телескопа на слабые звёзды фигуры этой ночью и влезет ли она в окуляр
+function astAdvice(o,n,bortle,aperture){const m=astMags(o), lim=astLim(n,bortle,aperture,stats(o,n,VISUAL_ALT).moonFrac), L=fmtR(+lim.toFixed(1)), over=astOver(o);
+  const D=aperture>0?`ваш телескоп`:'телескоп 150 мм (апертура не задана)';
+  const t=!m?'':{hidden:`Звёзды фигуры (${fmtR(o.magTxt)}ᵐ) слабее предела, который ${D} даёт этой ночью (≈${L}ᵐ), — не увидеть. `,
+    ok:`Все звёзды фигуры (${fmtR(o.magTxt)}ᵐ) уверенно видны: предел этой ночью ≈${L}ᵐ. `,
+    edge:`Самые слабые звёзды (${fmtR(m[1])}ᵐ) — на пределе (≈${L}ᵐ): фигура проявится не сразу, помогает боковое зрение. `,
+    partial:`Самые слабые звёзды (${fmtR(m[1])}ᵐ) слабее предела этой ночью (≈${L}ᵐ) — фигура будет неполной. `}[astVis(m,lim)];
+  return t+(over>1?`Шире поля самого широкого вашего окуляра — смотрите по частям. `:'')}
 function starScore(o,n,bortle,aperture){const s=stats(o,n,VISUAL_ALT);
   const base=100*Math.min(s.h,2)/2*(.6+.4*clamp((s.max-10)/40)), D=aperture>0?aperture:150, lim=telLim(bortle,D);
   let f=.7;
@@ -846,7 +866,7 @@ function starScore(o,n,bortle,aperture){const s=stats(o,n,VISUAL_ALT);
   else if(o.type=='VAR'){const now=varNow(o,s.tMax||n.dark[0]?.t), ecl=eclipses(o,n).length, cur=now?now.mag:(o.v.max+o.v.min)/2;
     // интереснее всего: минимум затменной этой ночью и мирида около максимума; остальные переменные — ниже, их место в своей категории
     f=(ecl?1.05:now&&/^M/.test(o.v.type)&&cur-o.v.max<1.5?.9:.6)*(o.carbon?1.05:1)*(cur<=lim?1:.25)*clamp((10-o.v.max)/6,.5,1)}
-  else if(o.type=='AST') f=.75*(.55+.45*clamp((s.max-20)/60)); // блеска нет — выше тот, что выше поднимается
+  else if(o.type=='AST') f=.75*astFactor(o,s,n,bortle,aperture);
   else f=.8*(o.mag<=lim?1:.25)*clamp((10-o.mag)/4,.5,1);
   // ×0,8: в общем списке туманности и галактики остаются впереди, звёзды — в своих категориях; минимум затменной этой ночью — исключение
   return {...s,score:Math.min(100,base*f*(o.type=='VAR'&&eclipses(o,n).length?1:.8))}}
@@ -857,7 +877,7 @@ const VTYPE={M:'мирида (долгопериодическая)',SRA:'пол
   UG:'карликовая новая',UGSS:'карликовая новая',UGZ:'карликовая новая',ZAND:'симбиотическая'};
 function starInfo(o,n,hm,bortle,aperture){const D=aperture>0?aperture:0;
   if(o.type=='AST') return [`размер ${fmtR(o.a)}′${o.b!=o.a?'×'+fmtR(o.b)+'′':''}${o.magTxt?` · звёзды ${fmtR(o.magTxt)}ᵐ`:''}${o.a>=90?' — малое увеличение':''}${o.user?` · каталог «${esc(o.user)}»`:o.src?` · ${o.src.replace('+',' и ')}`:''}`,
-    o.desc?esc(o.desc).replace(/\.\s*$/,''):'звёздный узор, а не скопление: ищите по карте неба рядом с объектом и узнавайте по форме'];
+    astAdvice(o,n,bortle,aperture)+(o.desc?esc(o.desc).replace(/\.\s*$/,''):'Звёздный узор, а не скопление: ищите по карте неба рядом с объектом и узнавайте по форме')];
   if(o.type=='DBL'){const d=o.d, need=apRound(116/d.sep*1.3);
     return [`${o.d.desig&&o.d.desig!=o.name?o.d.desig+' · ':''}${f1(d.m1)}ᵐ + ${f1(d.m2)}ᵐ · расстояние ${fmtR(d.sep)}″${d.pa!=null?` · угол ${d.pa}°`:''}${d.sp?' · спектр '+esc(d.sp):''}`,
       need?`разделяется от ${need} мм${D?` (у вас ${D} мм — ${D>=need?'разделится':'не разделится'})`:''}`:'разделяется в любой телескоп, если пара шире 3″ — даже в бинокль']}
