@@ -1921,7 +1921,11 @@ function render(){
     $('scoreSt').textContent=`Оценка по времени ${hm(n.s[mapIdx].t)}–${hm(n.s[Math.min(mapIdx+23,a1)].t)}: высота в эти часы, Луна, сколько объект ещё простоит выше ${VISUAL_ALT}°.`
       +(nowI<a0||nowI>a1?' Выбранная ночь сейчас не тёмная — «Сейчас» поставит начало темноты.':'')}
   else $('scoreSt').textContent='';
+  const onlyStars=kind=='visual'&&types.size>0&&[...types].every(t=>STAR_TYPES.has(t));
   let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&(o.user||o.type=='AST'))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,nS,bortle,aperture,oiii))}))
+    // в фильтре только звёздных категорий — полная шкала 0–100: множители, которые в общем списке ставят звёзды после туманностей
+    // и галактик (×0,8, у астеризмов ещё ×0,75), здесь не нужны
+    .map(r=>onlyStars&&r.o.star?{...r,score:Math.min(100,r.score/(r.o.type=='AST'?.6:.8))}:r)
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
     .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
   const mc=mntCfg(), useM=mine=='plan'&&!q&&mc.on&&$('mntOrd').value=='m';
