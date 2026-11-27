@@ -1923,9 +1923,9 @@ function render(){
   else $('scoreSt').textContent='';
   const onlyStars=kind=='visual'&&types.size>0&&[...types].every(t=>STAR_TYPES.has(t));
   let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&(o.user||o.type=='AST'))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,nS,bortle,aperture,oiii))}))
-    // в фильтре только звёздных категорий — полная шкала 0–100: множители, которые в общем списке ставят звёзды после туманностей
-    // и галактик (×0,8, у астеризмов ещё ×0,75), здесь не нужны
-    .map(r=>onlyStars&&r.o.star?{...r,score:Math.min(100,r.score/(r.o.type=='AST'?.6:.8))}:r)
+    // в фильтре только звёздных категорий — полная шкала 0–100: делим на потолок категории в starScore (общий ×0,8 и свой множитель
+    // лучшего объекта: астеризм ×0,75, двойная ×0,85, углеродная ×0,8, переменная ×0,9), который в общем списке ставит звёзды после туманностей
+    .map(r=>onlyStars&&r.o.star?{...r,score:Math.min(100,r.score/({AST:.6,DBL:.68,CS:.64,VAR:.72}[r.o.type]||.8))}:r)
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
     .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
   const mc=mntCfg(), useM=mine=='plan'&&!q&&mc.on&&$('mntOrd').value=='m';
