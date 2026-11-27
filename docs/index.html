@@ -119,6 +119,17 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .hzpanel p{margin:4px 0}
 .log button.stell{flex-basis:100%;color:var(--fg)}
+.mapobj{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}.mapobj button{font:inherit;font-size:12px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;margin-right:4px}
+#map.full .mapobj{display:none}
+/* на весь экран — кнопка «Объекты ▾» справа вверху раскрывает панель: слой вкл/выкл, «Все/Ничего» и типы */
+#map .mapobjbtn{display:none}
+#map.full .mapobjbtn{display:block;position:fixed;z-index:102;top:max(10px,env(safe-area-inset-top,0px));right:max(10px,env(safe-area-inset-right,0px));
+  font:inherit;font-size:15px;color:var(--fg);background:rgba(12,17,29,.75);border:1px solid var(--line);border-radius:999px;padding:7px 16px;cursor:pointer}
+#map.full.objopen .mapobj,#map.full.objopen .mapobjt{display:flex!important;flex-wrap:wrap;position:fixed;z-index:102;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
+  background:rgba(12,17,29,.92);border:1px solid var(--line);padding:8px 10px;margin:0}
+#map.full.objopen .mapobj{top:calc(max(10px,env(safe-area-inset-top,0px)) + 46px);border-radius:12px 12px 0 0}
+#map.full.objopen .mapobjt{top:calc(max(10px,env(safe-area-inset-top,0px)) + 90px);border-top:0;border-radius:0 0 12px 12px;max-height:45vh;overflow:auto}
+#map.full.objopen .mapobjt[hidden]{display:none!important}
 .mapobjt{margin:4px 0}.mapobjt button{font-size:12px;padding:3px 10px}.mapobjt i{font-style:normal}
 #map.full .mapobjt{display:none}
 .scoret{display:flex;align-items:center;gap:8px}.scoret label{flex:1}.scoret button{font:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
@@ -187,7 +198,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 /* карта занимает всё место между кнопками и списком; подпись прячем */
 /* на весь экран — только карта и кнопка «Назад»; область карты подгоняется под пропорции экрана, поэтому она заполняет его целиком */
 #map.full{padding:0;overflow:hidden}
-#map.full>*:not(#mapSky):not(.mapback):not(.starbar){display:none}
+#map.full>*:not(#mapSky):not(.mapback):not(.starbar):not(.mapobjbtn){display:none}
 /* ползунок предела блеска остаётся и на весь экран — полупрозрачной полоской внизу */
 #map.full .starbar{position:fixed;z-index:101;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));margin:0;flex-direction:column;align-items:stretch;gap:2px;background:rgba(12,17,29,.78);border:1px solid var(--line);border-radius:12px;padding:6px 12px}
 #map.full svg{width:100vw;height:100dvh;max-width:none;margin:0}
@@ -1607,7 +1618,7 @@ let mapFlip=0; try{mapFlip=clamp(+localStorage.getItem('mapFlip')||0,0,2)}catch{
 // (предел ≈6ᵐ на всём небе и +2,5ᵐ на каждое удвоение масштаба); подписи — у тех, что на 2,5ᵐ ярче предела. Выключается галочкой
 const DSO_COL={G:'#e07a7a',GG:'#e07a7a',OC:'#e3c46a',GC:'#e3c46a',PN:'#72d98e',EN:'#72d98e',RN:'#7cc6e0',SNR:'#72d98e',DN:'#8a93ab',
   AST:'#8fb6ff',DBL:'#dfe5f2',VAR:'#dfe5f2',CARB:'#ff8a6a',CS:'#ff8a6a'};
-let mapObj={on:false,types:new Set(['G','GC','PN','OC','EN','RN','SNR','AST'])};
+let mapObj={on:true,types:new Set(['G','GC','PN','OC','EN','RN','SNR','AST'])};
 try{const m=JSON.parse(localStorage.getItem('mapObj')||'null'); if(m) mapObj={on:!!m.on,types:new Set((m.types||[]).filter(t=>t in DSO_COL))}}catch{}
 // блеск для отбора: оценочный (по типу и площади — большие тусклые туманности Шарплесса, LBN) обманчиво ярок, считаем на 4ᵐ слабее;
 // у астеризма — по самой слабой звезде фигуры
@@ -1625,8 +1636,9 @@ function dsoLayer(P,vis,f1,u,z,L,ns){const lim=Math.min(16,6+2.5*Math.log2(z)), 
     const m=dsoMag(o); if(m>lim) continue; const p=P(o.ra,o.dec); if(vis(p)) sel.push({o,m,p})}
   // от ярких к слабым: подпись ставим, только если клетка рядом ещё свободна — подписи не налезают друг на друга
   sel.sort((a,b)=>a.m-(a.o.base?3:0)-b.m+(b.o.base?3:0)); const busy=new Set(), cw=34*u, chh=11*u; let s=''; // известные (основной список) подписываются первыми
-  for(const {o,m,p} of sel){const r=Math.max((o.star&&o.type!='AST'?2:3)*u,o.a/120*k), c=DSO_COL[o.type]||'#8a93ab'; // настоящий размер, но не мельче знака
+  for(const {o,m,p} of sel){const r=Math.max((o.star&&o.type!='AST'?2.5:4)*u,o.a/120*k), c=DSO_COL[o.type]||'#8a93ab'; // настоящий размер, но не мельче знака
     // большие контуры (туманности в градусы) и туманности с оценочным блеском — бледнее, чтобы не забивали мелкие объекты
+    mapHits.push({o,x:p[0],y:p[1],r});
     const op=(o.est?.55:1)*(r>25*u?.4:1);
     s+=op<1?`<g opacity="${op.toFixed(2)}">${dsoSym(o.type,p[0],p[1],r,c,ns)}</g>`:dsoSym(o.type,p[0],p[1],r,c,ns);
     if(m>labLim) continue; const x=p[0]+Math.min(r,12*u)+2*u, y=p[1]-2*u, key=Math.floor(x/cw)+','+Math.floor(y/chh);
@@ -1672,7 +1684,8 @@ function nightIdx(n,lat){const d0=n.dark[0].i, d1=n.dark[n.dark.length-1].i, key
   if(key!=mapKey||mapIdx==null){mapKey=key; const nowI=Math.round((Date.now()-n.s[0].t)/STEP); mapIdx=nowI>=d0&&nowI<=d1?nowI:(d0+d1)>>1}
   mapIdx=clamp(mapIdx,d0,d1); return [d0,d1]}
 let mapProj=null; // текущая проекция — для перехода к объекту по нажатию в списке
-function drawMap(n,lat,hm,L){
+let mapHits=[]; // нарисованные объекты [{o, x, y, r}] в координатах карты — для нажатия по объекту
+function drawMap(n,lat,hm,L){mapHits=[];
   const [d0,d1]=nightIdx(n,lat);
   const x=n.s[mapIdx], Lst=x.L, sl=sin(lat), cl=cos(lat), R0=190, dd=days(x.t);
   // экваториальные → [x,y] на карте или null под горизонтом
@@ -1701,8 +1714,6 @@ function drawMap(n,lat,hm,L){
   }
   // при приближении — остальные объекты основного списка блёклыми кружками, чтобы было от чего «прыгать»
   if(mapObj.on) svg+=dsoLayer(P,vis,f1,u,z,L,ns);
-  else if(z>=2) for(const o of CATALOG){if(!o.base||L.ids.includes(o.id))continue; const p=P(o.ra,o.dec); if(vis(p))
-    svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.5*u}" fill="none" stroke="#8a93ab" stroke-width="1" ${ns}/><text x="${f1(p[0]+5*u)}" y="${f1(p[1]-4*u)}" font-size="${8*u}" fill="#8a93ab">${esc(o.id)}</text>`}
   // планеты — точка и подпись одним нейтральным цветом, чтобы не путать с объектами плана (они жёлтые)
   for(const pl of planetsAt(dd)){const p=P(pl.ra,pl.dec); if(vis(p))
     svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.4*u}" fill="#b9c3dd" stroke="#0c111d" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="${f1(p[0]+6*u)}" y="${f1(p[1]+4*u)}" font-size="${10*u}" font-style="italic" fill="#b9c3dd">${pl.name}</text>`}
@@ -1712,6 +1723,7 @@ function drawMap(n,lat,hm,L){
   if(hz){const ring=r=>Array.from({length:HZN},(_,i)=>{const h=typeof r=='number'?r:R0*(90-hz[i])/90, a=i*5*R; return flipXY(200-h*Math.sin(a),200-h*Math.cos(a)).map(v=>v.toFixed(2)).join(',')});
     svg+=`<path d="M${ring(R0).join('L')}Z M${ring().join('L')}Z" fill="#3b4256" fill-opacity=".85" fill-rule="evenodd" stroke="#59617a" ${ns}/>`}
   svg+=eyepieceCircles(Lst,sl,cl,P,u);
+  for(const {o,p} of objs) if(vis(p)) mapHits.push({o,x:p[0],y:p[1],r:6*u});
   for(const {o,p} of objs) if(vis(p)) svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${6*u}" fill="none" stroke="var(--accent)" stroke-width="1.8" ${ns}/>`
     +`<text x="${f1(p[0]+8*u)}" y="${f1(p[1]-7*u)}" font-size="${11*u}" font-weight="600" fill="var(--accent)">${esc(o.id)}</text>`;
   const up=objs.filter(q=>q.p).sort((a,b)=>b.p[2]-a.p[2]), down=objs.filter(q=>!q.p);
@@ -1723,18 +1735,20 @@ function drawMap(n,lat,hm,L){
   const t=$('mapT');
   const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`+(magLim>7.5&&tycState=='load'?' · загружаю слабые звёзды (8 МБ, один раз)…':magLim>7.5&&tycState=='err'?' · слабые звёзды не загрузились — нужен интернет один раз':'');
   if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapZoom').textContent=zTxt; $('starTxt').textContent=starTxt; $('mapSky').setAttribute('viewBox',vb); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
-  $('map').innerHTML=`<button type="button" class="mapback" data-z="full">← Назад</button><div class="mapctl">
+  $('map').innerHTML=`<button type="button" class="mapback" data-z="full">← Назад</button><button type="button" class="mapobjbtn" data-z="objs" aria-expanded="false">Объекты ▾</button><div class="mapctl">
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full">На весь экран</button>
       <label class="flipsel">Вид<select id="mapFlip">${['как на небе','зеркально (диагональ)','перевёрнуто (Ньютон)'].map((t,i)=>`<option value="${i}"${i==mapFlip?' selected':''}>${t}</option>`).join('')}</select></label>
-      <label class="flipsel"><input type="checkbox" id="mapObjOn"${mapObj.on?' checked':''}> Объекты</label></div>
+</div>
+    <div class="mapobj"><label class="flipsel"><input type="checkbox" id="mapObjOn"${mapObj.on?' checked':''}> Объекты на карте</label>
+      <span id="mapObjAll"${mapObj.on?'':' hidden'}><button type="button" data-mall="1">Все</button><button type="button" data-mall="0">Ничего</button></span></div>
     <div class="cats mapobjt" id="mapObjTypes"${mapObj.on?'':' hidden'}>${Object.entries(TYPE_PL).filter(([t])=>!USER_TYPES.has(t)||CATALOG.some(o=>o.type==t))
       .map(([t,l])=>`<button type="button" data-mt="${t}" aria-pressed="${mapObj.types.has(t)}"><i style="color:${DSO_COL[t]}">●</i> ${l}</button>`).join('')}</div>
     <label class="starbar"><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="${MAG_TOP}" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
-    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, <span id="flipTxt">${FLIP_TXT[mapFlip]}</span>. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно.</p>
+    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, <span id="flipTxt">${FLIP_TXT[mapFlip]}</span>. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно; нажмите на объект на карте — откроется его карточка.</p>
     <div id="mapList">${listHtml}</div>`;
 }
 let mapArgs=null, mapRaf=0;
@@ -1758,7 +1772,7 @@ async function keepAwake(on){wantAwake=on;
   try{if(on&&!wakeLock&&navigator.wakeLock&&document.visibilityState=='visible'){wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null})}
     else if(!on&&wakeLock){const w=wakeLock; wakeLock=null; await w.release()}}catch{}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='visible'&&wantAwake) keepAwake(true)});
-function setMapFull(on,fromHistory){mapFull=on; $('map').classList.toggle('full',on);
+function setMapFull(on,fromHistory){mapFull=on; $('map').classList.toggle('full',on); if(!on) $('map').classList.remove('objopen');
   // запись в истории: жест «назад» Android сворачивает карту, а не закрывает приложение
   if(on&&!fromHistory) history.pushState({mapFull:1},''); else if(!on&&!fromHistory&&history.state?.mapFull) history.back();
   if(!on) $('map').scrollIntoView({block:'start'}); mapRedraw()}
@@ -1768,6 +1782,12 @@ const mapRedraw=()=>{if(!mapRaf&&mapArgs) mapRaf=requestAnimationFrame(()=>{mapR
 // масштаб с сохранением точки под пальцем/курсором (x,y — в координатах карты)
 function zoomAt(f,x,y){const v=mapView, z0=v.z; v.z=clamp(z0*f,1,ZMAX); const k=z0/v.z; v.cx=x-(x-v.cx)*k; v.cy=y-(y-v.cy)*k; clampView(); mapRedraw()}
 const toMap=(svg,cx,cy)=>{const r=svg.getBoundingClientRect(), h=200/mapView.z, unit=2*h/r.width; return [mapView.cx-h+(cx-r.left)*unit, mapView.cy-h*mapK+(cy-r.top)*unit]};
+// объект под пальцем: ближайший к точке нажатия в пределах его знака, но не меньше ~10 px — по маленьким тоже можно попасть
+function mapHitAt(cx,cy){const svg=$('mapSky'); if(!svg||!mapHits.length) return null; const [x,y]=toMap(svg,cx,cy), u=1/mapView.z;
+  let best=null, bd=1e9; for(const h of mapHits){const d=Math.hypot(h.x-x,h.y-y); if(d<=Math.max(h.r,10*u)&&d<bd){bd=d; best=h.o}} return best}
+// карточка объекта: выходим из полноэкранной карты и открываем его в рекомендациях через поиск — точное совпадение раскрывается само
+function openCard(o){if(mapFull) setMapFull(false); $('q').value=o.id; tab='rec'; shown=15; render();
+  const d=[...$('list').querySelectorAll('details')].find(x=>x.dataset.id==o.id); if(d){d.open=true; d.scrollIntoView({block:'start',behavior:'smooth'})}}
 const ptrs=new Map(); let pinch0=null, tap=null; // tap — касание одним пальцем без сдвига: открывает карту на весь экран
 $('map').addEventListener('pointerdown',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,[e.clientX,e.clientY]); pinch0=null;
   tap=ptrs.size==1?{id:e.pointerId,x:e.clientX,y:e.clientY}:null});
@@ -1777,7 +1797,8 @@ $('map').addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return; co
   const [a,b]=[...ptrs.values()], dist=Math.hypot(a[0]-b[0],a[1]-b[1]);
   if(pinch0) zoomAt(dist/pinch0,...toMap(svg,(a[0]+b[0])/2,(a[1]+b[1])/2)); pinch0=dist});
 for(const ev of ['pointerup','pointercancel']) $('map').addEventListener(ev,e=>{ptrs.delete(e.pointerId); pinch0=null;
-  if(ev=='pointerup'&&tap?.id==e.pointerId&&!mapFull&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<8) setMapFull(true);
+  if(ev=='pointerup'&&tap?.id==e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<8){const o=mapHitAt(e.clientX,e.clientY);
+    if(o) openCard(o); else if(!mapFull) setMapFull(true)}
   if(tap?.id==e.pointerId) tap=null});
 $('map').addEventListener('wheel',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; e.preventDefault(); zoomAt(e.deltaY<0?1.25:.8,...toMap(svg,e.clientX,e.clientY))},{passive:false});
 $('map').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return;
@@ -1785,6 +1806,7 @@ $('map').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)
   if(z=='in'||z=='out') zoomAt(z=='in'?1.6:1/1.6,mapView.cx,mapView.cy);
   else if(z=='all'){mapView={z:1,cx:200,cy:200}; mapRedraw()}
   else if(z=='full') setMapFull(!mapFull)
+  else if(z=='objs'){const open=$('map').classList.toggle('objopen'); b.setAttribute('aria-expanded',open)}
   else if(b.classList.contains('goto')&&mapProj){const o=BYID[b.dataset.id], p=o&&mapProj(o.ra,o.dec); if(!p)return;
     mapView={z:30,cx:p[0],cy:p[1]}; /* поле ~6° — как у искателя, снимок неба вокруг объекта виден целиком */ clampView(); mapRedraw(); $('mapSky').scrollIntoView({block:'center',behavior:'smooth'})}});
 function render(){
@@ -2173,9 +2195,12 @@ $('q').addEventListener('input',()=>{$('qst').hidden=true});
 // ползунок времени: не чаще кадра экрана и без полной перерисовки страницы
 // слой объектов: включить/выключить и типы — запоминаются
 const saveMapObj=()=>{try{localStorage.setItem('mapObj',JSON.stringify({on:mapObj.on,types:[...mapObj.types]}))}catch{}};
+$('map').addEventListener('click',e=>{const a=e.target.closest('[data-mall]'); if(!a) return; // все типы или ни одного — потом включить нужные
+  for(const b of $('mapObjTypes').children){const t=b.dataset.mt; mapObj.types[a.dataset.mall=='1'?'add':'delete'](t); b.setAttribute('aria-pressed',mapObj.types.has(t))}
+  saveMapObj(); mapRedraw()});
 $('map').addEventListener('click',e=>{const b=e.target.closest('[data-mt]'); if(!b) return; const t=b.dataset.mt;
   mapObj.types[mapObj.types.has(t)?'delete':'add'](t); b.setAttribute('aria-pressed',mapObj.types.has(t)); saveMapObj(); mapRedraw()});
-$('map').addEventListener('change',e=>{if(e.target.id!='mapObjOn') return; mapObj.on=e.target.checked; $('mapObjTypes').hidden=!mapObj.on; saveMapObj(); mapRedraw()});
+$('map').addEventListener('change',e=>{if(e.target.id!='mapObjOn') return; mapObj.on=e.target.checked; $('mapObjTypes').hidden=$('mapObjAll').hidden=!mapObj.on; saveMapObj(); mapRedraw()});
 $('map').onchange=e=>{if(e.target.id=='mapFlip'){const [ux,uy]=flipXY(mapView.cx,mapView.cy); mapFlip=+e.target.value; [mapView.cx,mapView.cy]=flipXY(ux,uy); /* в центре — та же точка неба */ try{localStorage.setItem('mapFlip',mapFlip)}catch{} $('flipTxt').textContent=FLIP_TXT[mapFlip]; mapRedraw()}};
 $('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}
   else if(e.target.id=='starLim'){starLim=+e.target.value; try{localStorage.setItem('starLim',starLim)}catch{} mapRedraw()}};

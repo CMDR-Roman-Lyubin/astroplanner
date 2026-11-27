@@ -1,1 +1,1 @@
-window.APP_VERSION="Версия 60 от 27.11.2026";
+window.APP_VERSION="Версия 61 от 27.11.2026";
