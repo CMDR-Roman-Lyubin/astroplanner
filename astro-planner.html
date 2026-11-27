@@ -115,6 +115,12 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .hzpanel p{margin:4px 0}
 .log button.stell{flex-basis:100%;color:var(--fg)}
+.mappop{position:fixed;z-index:103;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom,0px));width:min(92vw,420px);box-sizing:border-box;
+  background:rgba(12,17,29,.95);border:1px solid var(--accent);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+#map.full .mappop{bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 70px)}
+.mappop[hidden]{display:none!important}
+.mpbtns{display:flex;gap:6px;margin-top:4px}.mpbtns button{font:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.mpbtns button[aria-pressed=true]{color:var(--bg);background:var(--accent);border-color:var(--accent)}.mpbtns [data-pop=x]{margin-left:auto}
 .mapobj{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}.mapobj button{font:inherit;font-size:12px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;cursor:pointer;margin-right:4px}
 #map.full .mapobj{display:none}
 /* на весь экран — кнопка «Объекты ▾» справа вверху раскрывает панель: слой вкл/выкл, «Все/Ничего» и типы */
@@ -194,7 +200,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 /* карта занимает всё место между кнопками и списком; подпись прячем */
 /* на весь экран — только карта и кнопка «Назад»; область карты подгоняется под пропорции экрана, поэтому она заполняет его целиком */
 #map.full{padding:0;overflow:hidden}
-#map.full>*:not(#mapSky):not(.mapback):not(.starbar):not(.mapobjbtn){display:none}
+#map.full>*:not(#mapSky):not(.mapback):not(.starbar):not(.mapobjbtn):not(.mappop){display:none}
 /* ползунок предела блеска остаётся и на весь экран — полупрозрачной полоской внизу */
 #map.full .starbar{position:fixed;z-index:101;left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));margin:0;flex-direction:column;align-items:stretch;gap:2px;background:rgba(12,17,29,.78);border:1px solid var(--line);border-radius:12px;padding:6px 12px}
 #map.full svg{width:100vw;height:100dvh;max-width:none;margin:0}
@@ -1731,7 +1737,7 @@ function drawMap(n,lat,hm,L){mapHits=[];
   const t=$('mapT');
   const starTxt=`Звёзды не слабее ${fmtR(starLim)}ᵐ · сейчас видны до ${fmtR(+magLim.toFixed(1))}ᵐ`+(magLim>7.5&&tycState=='load'?' · загружаю слабые звёзды (8 МБ, один раз)…':magLim>7.5&&tycState=='err'?' · слабые звёзды не загрузились — нужен интернет один раз':'');
   if(t&&t.min==d0&&t.max==d1){$('mapTime').textContent=hm(x.t); $('mapZoom').textContent=zTxt; $('starTxt').textContent=starTxt; $('mapSky').setAttribute('viewBox',vb); $('mapSky').innerHTML=svg; $('mapList').innerHTML=listHtml; return}
-  $('map').innerHTML=`<button type="button" class="mapback" data-z="full">← Назад</button><button type="button" class="mapobjbtn" data-z="objs" aria-expanded="false">Объекты ▾</button><div class="mapctl">
+  $('map').innerHTML=`<button type="button" class="mapback" data-z="full">← Назад</button><button type="button" class="mapobjbtn" data-z="objs" aria-expanded="false">Объекты ▾</button><div id="mapPop" class="mappop" role="dialog" aria-label="Объект на карте" hidden></div><div class="mapctl">
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full">На весь экран</button>
@@ -1744,7 +1750,7 @@ function drawMap(n,lat,hm,L){mapHits=[];
     <label class="starbar"><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="${MAG_TOP}" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
-    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, <span id="flipTxt">${FLIP_TXT[mapFlip]}</span>. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно; нажмите на объект на карте — откроется его карточка.</p>
+    <p class="sub">Список «${esc(L.name)}». Карта для взгляда вверх: центр — зенит, край — горизонт, <span id="flipTxt">${FLIP_TXT[mapFlip]}</span>. Приближайте двумя пальцами или кнопками, двигайте пальцем. Нажмите на объект в списке — карта покажет его крупно; нажмите на объект на карте — его можно добавить в план или открыть карточку.</p>
     <div id="mapList">${listHtml}</div>`;
 }
 let mapArgs=null, mapRaf=0;
@@ -1781,6 +1787,17 @@ const toMap=(svg,cx,cy)=>{const r=svg.getBoundingClientRect(), h=200/mapView.z, 
 // объект под пальцем: ближайший к точке нажатия в пределах его знака, но не меньше ~10 px — по маленьким тоже можно попасть
 function mapHitAt(cx,cy){const svg=$('mapSky'); if(!svg||!mapHits.length) return null; const [x,y]=toMap(svg,cx,cy), u=1/mapView.z;
   let best=null, bd=1e9; for(const h of mapHits){const d=Math.hypot(h.x-x,h.y-y); if(d<=Math.max(h.r,10*u)&&d<bd){bd=d; best=h.o}} return best}
+// панель объекта на карте: название, тип, высота сейчас; «в план» — текущий список визуала (как кнопка в карточке), «Карточка» — полная карточка
+function showMapPop(o){const L=listOf('visual'), inL=L.ids.includes(o.id), p=mapProj?.(o.ra,o.dec), el=$('mapPop');
+  el.innerHTML=`<div class="mpname"><b>${esc(o.id)}</b>${o.name?' · '+esc(o.name):''}</div>
+    <div class="sub">${TYPES[o.type]||''}${o.con?', '+esc(o.con):''}${p?` · высота ${Math.round(p[2])}°, ${DIRS[Math.round(p[3]/45)%8]}`:''}</div>
+    <div class="mpbtns"><button type="button" data-pop="list" aria-pressed="${inL}">${inL?'✓ в':'+ в'} «${esc(L.name)}»</button><button type="button" data-pop="card">Карточка</button><button type="button" data-pop="x" aria-label="Закрыть">✕</button></div>`;
+  el.dataset.id=o.id; el.hidden=false}
+$('map').addEventListener('click',e=>{const b=e.target.closest('[data-pop]'); if(!b) return; const el=$('mapPop'), o=BYID[el.dataset.id]||CATALOG.find(x=>x.id==el.dataset.id); if(!o) return;
+  if(b.dataset.pop=='x'){el.hidden=true; return}
+  if(b.dataset.pop=='card'){el.hidden=true; openCard(o); return}
+  const L=listOf('visual'); L.ids=L.ids.includes(o.id)?L.ids.filter(x=>x!=o.id):[...L.ids,o.id]; // в план или из плана
+  saveLocal(); clearTimeout(cloudTimer); cloudTimer=setTimeout(pushCloud,800); showMapPop(o); mapRedraw()});
 // карточка объекта: выходим из полноэкранной карты и открываем его в рекомендациях через поиск — точное совпадение раскрывается само
 function openCard(o){if(mapFull) setMapFull(false); $('q').value=o.id; tab='rec'; shown=15; render();
   const d=[...$('list').querySelectorAll('details')].find(x=>x.dataset.id==o.id); if(d){d.open=true; d.scrollIntoView({block:'start',behavior:'smooth'})}}
@@ -1794,7 +1811,7 @@ $('map').addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return; co
   if(pinch0) zoomAt(dist/pinch0,...toMap(svg,(a[0]+b[0])/2,(a[1]+b[1])/2)); pinch0=dist});
 for(const ev of ['pointerup','pointercancel']) $('map').addEventListener(ev,e=>{ptrs.delete(e.pointerId); pinch0=null;
   if(ev=='pointerup'&&tap?.id==e.pointerId&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<8){const o=mapHitAt(e.clientX,e.clientY);
-    if(o) openCard(o); else if(!mapFull) setMapFull(true)}
+    if(o) showMapPop(o); else if(!$('mapPop').hidden) $('mapPop').hidden=true; else if(!mapFull) setMapFull(true)}
   if(tap?.id==e.pointerId) tap=null});
 $('map').addEventListener('wheel',e=>{const svg=e.target.closest('#mapSky'); if(!svg)return; e.preventDefault(); zoomAt(e.deltaY<0?1.25:.8,...toMap(svg,e.clientX,e.clientY))},{passive:false});
 $('map').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return;
