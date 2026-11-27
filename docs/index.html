@@ -657,15 +657,18 @@ function cleanUserCat(c){const str=(x,n)=>typeof x=='string'?x.slice(0,n):'', nu
     if(ra==null||dec==null||!id) continue;
     objects.push({id,name:str(o.name,80),en:str(o.en,200),con:str(o.con,4),ra,dec,a:num(o.a,.1,600)||10,b:num(o.b,.1,600)||num(o.a,.1,600)||10,desc:str(o.desc,2000)})}
   return {name:str(c?.name,60)||'Свой каталог',source:str(c?.source,200),type,objects}}
-// встроенные астеризмы — названия и положения без описаний. Русское название + английское в скобках,
-// если обозначение — не само английское имя: «STAR 14 · Клюшка для гольфа (Golf Putter)», но «The Home Plate · Домашняя база»
-if(typeof ASTERISMS=='string') for(const l of ASTERISMS.trim().split('\n')){const [id,ru,en,con,ra,dec,a,b]=l.split(';');
-  const eng=en.split('|').map(x=>x.replace(/^The /,'')).find(x=>x&&x!=id&&x!=id.replace(/^The /,'')&&!/^(STAR|Star) \d/.test(x));
-  const name=ru&&eng&&!id.startsWith('The ')&&id.replace(/^The /,'')!=eng?`${ru} (${eng})`:ru;
-  CATALOG.push({id,name,type:'AST',con,ra:+ra,dec:+dec,mag:NaN,a:+a,b:+b,cats:0,alias:'',en,star:true,desc:''})}
+// встроенные астеризмы для телескопа (SAC + Astronomical League, asterisms.js): обозначение — английское имя, название — русское,
+// блеск звёзд строкой («7–8»); описаний нет
+if(typeof ASTERISMS=='string') for(const l of ASTERISMS.trim().split('\n')){const [id,name,en,con,ra,dec,a,b,mag,src]=l.split(';');
+  CATALOG.push({id,name,type:'AST',con,ra:+ra,dec:+dec,mag:NaN,magTxt:mag,src,a:+a,b:+b,cats:0,alias:'',en,star:true,desc:''})}
 const usedIds=new Set(CATALOG.map(o=>o.id));
+// тот же астеризм из личного каталога — не дубль, а описание к встроенному: то же обозначение, либо рядом на небе (до 1,5° —
+// у списков координаты расходятся) и общее слово в английском названии
+const angDist=(p,q)=>Math.acos(Math.min(1,Math.sin(p.dec*Math.PI/180)*Math.sin(q.dec*Math.PI/180)+Math.cos(p.dec*Math.PI/180)*Math.cos(q.dec*Math.PI/180)*Math.cos((p.ra-q.ra)*Math.PI/180)))*180/Math.PI;
+const words=s=>new Set((s||'').toLowerCase().replace(/[’']/g,'').split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!['star','with','group','mini'].includes(w)));
+const sameAst=(o,u)=>{if(o.id==u.id) return true; const d=angDist(o,u); if(d<.3) return true; if(d>1.5) return false; const a=words(o.id+' '+o.en); return [...words(u.id+' '+u.en)].some(w=>a.has(w))};
 for(const c of userCats) for(const u of cleanUserCat(c).objects){
-  const same=CATALOG.find(o=>o.id==u.id&&o.type==(c.type||'AST')&&!o.user); if(same){if(u.desc){same.desc=u.desc; same.descFrom=c.name} continue}
+  const same=CATALOG.find(o=>o.type==(c.type||'AST')&&!o.user&&sameAst(o,u)); if(same){if(u.desc){same.desc=u.desc; same.descFrom=c.name} continue}
   const id=usedIds.has(u.id)?u.id+' ('+c.name+')':u.id; usedIds.add(id);
   CATALOG.push({id,name:u.name==u.id?'':u.name,type:c.type||'AST',con:u.con,ra:u.ra,dec:u.dec,mag:NaN,a:u.a,b:u.b,cats:0,alias:'',en:u.en,star:true,user:c.name,desc:u.desc})}
 const norm=s=>s.toLowerCase().replace(/\s+/g,'');
@@ -857,7 +860,7 @@ const VTYPE={M:'мирида (долгопериодическая)',SRA:'пол
   DCEP:'цефеида',DCEPS:'цефеида',CEP:'цефеида',CW:'цефеида II типа',RCB:'типа R Северной Короны (внезапно гаснет)',NR:'повторная новая',
   UG:'карликовая новая',UGSS:'карликовая новая',UGZ:'карликовая новая',ZAND:'симбиотическая'};
 function starInfo(o,n,hm,bortle,aperture){const D=aperture>0?aperture:0;
-  if(o.type=='AST') return [`размер ${fmtR(o.a)}′${o.b!=o.a?'×'+fmtR(o.b)+'′':''}${o.a>=90?' — для бинокля':''}${o.user?` · каталог «${esc(o.user)}»`:''}`,
+  if(o.type=='AST') return [`размер ${fmtR(o.a)}′${o.b!=o.a?'×'+fmtR(o.b)+'′':''}${o.magTxt?` · звёзды ${fmtR(o.magTxt)}ᵐ`:''}${o.a>=90?' — малое увеличение':''}${o.user?` · каталог «${esc(o.user)}»`:o.src?` · ${o.src.replace('+',' и ')}`:''}`,
     o.desc?esc(o.desc).replace(/\.\s*$/,''):'звёздный узор, а не скопление: ищите по карте неба рядом с объектом и узнавайте по форме'];
   if(o.type=='DBL'){const d=o.d, need=apRound(116/d.sep*1.3);
     return [`${o.d.desig&&o.d.desig!=o.name?o.d.desig+' · ':''}${f1(d.m1)}ᵐ + ${f1(d.m2)}ᵐ · расстояние ${fmtR(d.sep)}″${d.pa!=null?` · угол ${d.pa}°`:''}${d.sp?' · спектр '+esc(d.sp):''}`,
