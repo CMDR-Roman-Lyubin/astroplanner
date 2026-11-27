@@ -115,6 +115,8 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .hzpanel p{margin:4px 0}
 .log button.stell{flex-basis:100%;color:var(--fg)}
+.mapobjt{margin:4px 0}.mapobjt button{font-size:12px;padding:3px 10px}.mapobjt i{font-style:normal}
+#map.full .mapobjt{display:none}
 .scoret{display:flex;align-items:center;gap:8px}.scoret label{flex:1}.scoret button{font:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
 .mntbar{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}
 .mntbar label{flex-direction:row;align-items:center;gap:8px;font-size:13px}.mntbar select{flex:1}
@@ -1597,6 +1599,36 @@ let starLim=7.5; try{starLim=clamp(+localStorage.getItem('starLim')||7.5,3,MAG_T
 // вид как в окуляре: 0 — как на небе, 1 — зеркально (диагональ, искатель с прямым углом), 2 — перевёрнуто на 180° (Ньютон, прямой искатель).
 // Оба преобразования сами себе обратны — тем же flipXY переводим экран обратно в небо
 let mapFlip=0; try{mapFlip=clamp(+localStorage.getItem('mapFlip')||0,0,2)}catch{}
+// ---------- Объекты на карте — как в Stellarium: знак и цвет по типу. При общем виде только яркие, при приближении всё слабее
+// (предел ≈6ᵐ на всём небе и +2,5ᵐ на каждое удвоение масштаба); подписи — у тех, что на 2,5ᵐ ярче предела. Выключается галочкой
+const DSO_COL={G:'#e07a7a',GG:'#e07a7a',OC:'#e3c46a',GC:'#e3c46a',PN:'#72d98e',EN:'#72d98e',RN:'#7cc6e0',SNR:'#72d98e',DN:'#8a93ab',
+  AST:'#8fb6ff',DBL:'#dfe5f2',VAR:'#dfe5f2',CARB:'#ff8a6a',CS:'#ff8a6a'};
+let mapObj={on:false,types:new Set(['G','GC','PN','OC','EN','RN','SNR','AST'])};
+try{const m=JSON.parse(localStorage.getItem('mapObj')||'null'); if(m) mapObj={on:!!m.on,types:new Set((m.types||[]).filter(t=>t in DSO_COL))}}catch{}
+// блеск для отбора: оценочный (по типу и площади — большие тусклые туманности Шарплесса, LBN) обманчиво ярок, считаем на 4ᵐ слабее;
+// у астеризма — по самой слабой звезде фигуры
+const dsoMag=o=>o.type=='AST'?(astMags(o)?.[1]??9):Number.isFinite(o.mag)?o.mag+(o.est?4:0):12;
+function dsoSym(t,x,y,r,c,ns){const X=x.toFixed(2), Y=y.toFixed(2), R=r.toFixed(3), f=v=>v.toFixed(2), st=`fill="none" stroke="${c}" stroke-width="1" ${ns}`;
+  if(t=='G'||t=='GG') return `<ellipse cx="${X}" cy="${Y}" rx="${R}" ry="${(r*.55).toFixed(3)}" ${st}/>`;
+  if(t=='OC'||t=='AST') return `<circle cx="${X}" cy="${Y}" r="${R}" ${st} stroke-dasharray="2 2"/>`;
+  if(t=='GC') return `<circle cx="${X}" cy="${Y}" r="${R}" ${st}/><path d="M${f(x-r)} ${Y}H${f(x+r)}M${X} ${f(y-r)}V${f(y+r)}" ${st}/>`;
+  if(t=='PN') return `<circle cx="${X}" cy="${Y}" r="${f(r*.6)}" ${st}/><path d="M${f(x-r)} ${Y}H${f(x-r*.6)}M${f(x+r)} ${Y}H${f(x+r*.6)}M${X} ${f(y-r)}V${f(y-r*.6)}M${X} ${f(y+r)}V${f(y+r*.6)}" ${st}/>`;
+  if(t=='DBL'||t=='VAR'||t=='CS') return `<circle cx="${X}" cy="${Y}" r="${R}" ${st}/>`;
+  return `<rect x="${f(x-r)}" y="${f(y-r)}" width="${f(2*r)}" height="${f(2*r)}" ${st}${t=='DN'?' stroke-dasharray="2 2"':''}/>`} // туманности
+function dsoLayer(P,vis,f1,u,z,L,ns){const lim=Math.min(16,6+2.5*Math.log2(z)), labLim=lim-2.5, plan=new Set(L.ids), k=190/90, sel=[];
+  for(const o of CATALOG){if(plan.has(o.id)||!(mapObj.types.has(o.type)||o.carbon&&mapObj.types.has('CARB'))) continue; // объекты плана рисуются отдельно
+    if(o.est&&z<4) continue; // туманности с блеском-оценкой — только при приближении
+    const m=dsoMag(o); if(m>lim) continue; const p=P(o.ra,o.dec); if(vis(p)) sel.push({o,m,p})}
+  // от ярких к слабым: подпись ставим, только если клетка рядом ещё свободна — подписи не налезают друг на друга
+  sel.sort((a,b)=>a.m-(a.o.base?3:0)-b.m+(b.o.base?3:0)); const busy=new Set(), cw=34*u, chh=11*u; let s=''; // известные (основной список) подписываются первыми
+  for(const {o,m,p} of sel){const r=Math.max((o.star&&o.type!='AST'?2:3)*u,o.a/120*k), c=DSO_COL[o.type]||'#8a93ab'; // настоящий размер, но не мельче знака
+    // большие контуры (туманности в градусы) и туманности с оценочным блеском — бледнее, чтобы не забивали мелкие объекты
+    const op=(o.est?.55:1)*(r>25*u?.4:1);
+    s+=op<1?`<g opacity="${op.toFixed(2)}">${dsoSym(o.type,p[0],p[1],r,c,ns)}</g>`:dsoSym(o.type,p[0],p[1],r,c,ns);
+    if(m>labLim) continue; const x=p[0]+Math.min(r,12*u)+2*u, y=p[1]-2*u, key=Math.floor(x/cw)+','+Math.floor(y/chh);
+    if(busy.has(key)) continue; busy.add(key); busy.add(Math.floor(x/cw)+1+','+Math.floor(y/chh)); // подпись шире клетки
+    s+=`<text x="${f1(x)}" y="${f1(y)}" font-size="${8*u}" fill="${c}"${op<1?` opacity="${Math.max(op,.6).toFixed(2)}"`:''}>${esc(o.id)}</text>`}
+  return s}
 const flipXY=(x,y)=>mapFlip==1?[400-x,y]:mapFlip==2?[400-x,400-y]:[x,y];
 const FLIP_TXT=['север сверху, восток слева — как на небе','зеркально, как в диагональ: север сверху, восток справа','перевёрнуто, как в Ньютоне: север снизу, восток справа'];
 const DIRS=['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'], ZMAX=60;
@@ -1664,7 +1696,8 @@ function drawMap(n,lat,hm,L){
     if(z<8) for(const [nm,ra,dec] of STARMAP.names){const p=P(ra,dec); if(vis(p)) svg+=`<text x="${f1(p[0])}" y="${f1(p[1])}" text-anchor="middle" font-size="${8*u}" fill="#7f8db3" opacity=".8">${esc(nm)}</text>`}
   }
   // при приближении — остальные объекты основного списка блёклыми кружками, чтобы было от чего «прыгать»
-  if(z>=2) for(const o of CATALOG){if(!o.base||L.ids.includes(o.id))continue; const p=P(o.ra,o.dec); if(vis(p))
+  if(mapObj.on) svg+=dsoLayer(P,vis,f1,u,z,L,ns);
+  else if(z>=2) for(const o of CATALOG){if(!o.base||L.ids.includes(o.id))continue; const p=P(o.ra,o.dec); if(vis(p))
     svg+=`<circle cx="${f1(p[0])}" cy="${f1(p[1])}" r="${3.5*u}" fill="none" stroke="#8a93ab" stroke-width="1" ${ns}/><text x="${f1(p[0]+5*u)}" y="${f1(p[1]-4*u)}" font-size="${8*u}" fill="#8a93ab">${esc(o.id)}</text>`}
   // планеты — точка и подпись одним нейтральным цветом, чтобы не путать с объектами плана (они жёлтые)
   for(const pl of planetsAt(dd)){const p=P(pl.ra,pl.dec); if(vis(p))
@@ -1690,7 +1723,10 @@ function drawMap(n,lat,hm,L){
       <button type="button" data-z="in" aria-label="Приблизить">＋</button><button type="button" data-z="out" aria-label="Отдалить">−</button>
       <button type="button" data-z="all">Всё небо</button><span id="mapZoom">${zTxt}</span>
       <button type="button" data-z="full">На весь экран</button>
-      <label class="flipsel">Вид<select id="mapFlip">${['как на небе','зеркально (диагональ)','перевёрнуто (Ньютон)'].map((t,i)=>`<option value="${i}"${i==mapFlip?' selected':''}>${t}</option>`).join('')}</select></label></div>
+      <label class="flipsel">Вид<select id="mapFlip">${['как на небе','зеркально (диагональ)','перевёрнуто (Ньютон)'].map((t,i)=>`<option value="${i}"${i==mapFlip?' selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="flipsel"><input type="checkbox" id="mapObjOn"${mapObj.on?' checked':''}> Объекты</label></div>
+    <div class="cats mapobjt" id="mapObjTypes"${mapObj.on?'':' hidden'}>${Object.entries(TYPE_PL).filter(([t])=>!USER_TYPES.has(t)||CATALOG.some(o=>o.type==t))
+      .map(([t,l])=>`<button type="button" data-mt="${t}" aria-pressed="${mapObj.types.has(t)}"><i style="color:${DSO_COL[t]}">●</i> ${l}</button>`).join('')}</div>
     <label class="starbar"><span id="starTxt">${starTxt}</span><input type="range" id="starLim" min="3" max="${MAG_TOP}" step="0.5" value="${starLim}" aria-label="Предел блеска звёзд на карте"></label>
     <label>Время: <strong id="mapTime">${hm(x.t)}</strong><input type="range" id="mapT" min="${d0}" max="${d1}" value="${mapIdx}" aria-label="Время на карте"></label>
     <svg id="mapSky" viewBox="${vb}" role="img" aria-label="Карта неба над головой со списком «${esc(L.name)}»">${svg}</svg>
@@ -2131,6 +2167,11 @@ async function voiceSearch(){
 $('qmic').hidden=!canRec; $('qmic').onclick=voiceSearch;
 $('q').addEventListener('input',()=>{$('qst').hidden=true});
 // ползунок времени: не чаще кадра экрана и без полной перерисовки страницы
+// слой объектов: включить/выключить и типы — запоминаются
+const saveMapObj=()=>{try{localStorage.setItem('mapObj',JSON.stringify({on:mapObj.on,types:[...mapObj.types]}))}catch{}};
+$('map').addEventListener('click',e=>{const b=e.target.closest('[data-mt]'); if(!b) return; const t=b.dataset.mt;
+  mapObj.types[mapObj.types.has(t)?'delete':'add'](t); b.setAttribute('aria-pressed',mapObj.types.has(t)); saveMapObj(); mapRedraw()});
+$('map').addEventListener('change',e=>{if(e.target.id!='mapObjOn') return; mapObj.on=e.target.checked; $('mapObjTypes').hidden=!mapObj.on; saveMapObj(); mapRedraw()});
 $('map').onchange=e=>{if(e.target.id=='mapFlip'){const [ux,uy]=flipXY(mapView.cx,mapView.cy); mapFlip=+e.target.value; [mapView.cx,mapView.cy]=flipXY(ux,uy); /* в центре — та же точка неба */ try{localStorage.setItem('mapFlip',mapFlip)}catch{} $('flipTxt').textContent=FLIP_TXT[mapFlip]; mapRedraw()}};
 $('map').oninput=e=>{if(e.target.id=='mapT'){mapIdx=+e.target.value; mapRedraw()}
   else if(e.target.id=='starLim'){starLim=+e.target.value; try{localStorage.setItem('starLim',starLim)}catch{} mapRedraw()}};
