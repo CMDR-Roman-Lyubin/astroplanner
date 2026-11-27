@@ -400,7 +400,7 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
 
 <script src="version.js"></script>
 <script src="catalog-extra.js"></script>
-<script src="stars-vis.js"></script><!-- двойные, переменные и углеродные звёзды для визуала --><!-- дополнительные каталоги; без файла работает основной список -->
+<script src="stars-vis.js"></script><script src="asterisms.js"></script><!-- двойные, переменные и углеродные звёзды для визуала --><!-- дополнительные каталоги; без файла работает основной список -->
 <script>
 // ---------- Каталог: id;название;тип;созвездие;RA ч;Dec °;блеск;размер a';b' ----------
 // Координаты J2000, записаны по памяти с точностью ~0,5° — для планирования хватает, для наведения нет.
@@ -657,8 +657,16 @@ function cleanUserCat(c){const str=(x,n)=>typeof x=='string'?x.slice(0,n):'', nu
     if(ra==null||dec==null||!id) continue;
     objects.push({id,name:str(o.name,80),en:str(o.en,200),con:str(o.con,4),ra,dec,a:num(o.a,.1,600)||10,b:num(o.b,.1,600)||num(o.a,.1,600)||10,desc:str(o.desc,2000)})}
   return {name:str(c?.name,60)||'Свой каталог',source:str(c?.source,200),type,objects}}
+// встроенные астеризмы — названия и положения без описаний. Русское название + английское в скобках,
+// если обозначение — не само английское имя: «STAR 14 · Клюшка для гольфа (Golf Putter)», но «The Home Plate · Домашняя база»
+if(typeof ASTERISMS=='string') for(const l of ASTERISMS.trim().split('\n')){const [id,ru,en,con,ra,dec,a,b]=l.split(';');
+  const eng=en.split('|').map(x=>x.replace(/^The /,'')).find(x=>x&&x!=id&&x!=id.replace(/^The /,'')&&!/^(STAR|Star) \d/.test(x));
+  const name=ru&&eng&&!id.startsWith('The ')&&id.replace(/^The /,'')!=eng?`${ru} (${eng})`:ru;
+  CATALOG.push({id,name,type:'AST',con,ra:+ra,dec:+dec,mag:NaN,a:+a,b:+b,cats:0,alias:'',en,star:true,desc:''})}
 const usedIds=new Set(CATALOG.map(o=>o.id));
-for(const c of userCats) for(const u of cleanUserCat(c).objects){const id=usedIds.has(u.id)?u.id+' ('+c.name+')':u.id; usedIds.add(id);
+for(const c of userCats) for(const u of cleanUserCat(c).objects){
+  const same=CATALOG.find(o=>o.id==u.id&&o.type==(c.type||'AST')&&!o.user); if(same){if(u.desc){same.desc=u.desc; same.descFrom=c.name} continue}
+  const id=usedIds.has(u.id)?u.id+' ('+c.name+')':u.id; usedIds.add(id);
   CATALOG.push({id,name:u.name==u.id?'':u.name,type:c.type||'AST',con:u.con,ra:u.ra,dec:u.dec,mag:NaN,a:u.a,b:u.b,cats:0,alias:'',en:u.en,star:true,user:c.name,desc:u.desc})}
 const norm=s=>s.toLowerCase().replace(/\s+/g,'');
 for(const o of CATALOG){o.keys=[o.id,...o.alias.split(',').filter(Boolean)].map(norm); o.key=o.keys.join('|')+'|'+norm(o.name)
@@ -849,8 +857,8 @@ const VTYPE={M:'мирида (долгопериодическая)',SRA:'пол
   DCEP:'цефеида',DCEPS:'цефеида',CEP:'цефеида',CW:'цефеида II типа',RCB:'типа R Северной Короны (внезапно гаснет)',NR:'повторная новая',
   UG:'карликовая новая',UGSS:'карликовая новая',UGZ:'карликовая новая',ZAND:'симбиотическая'};
 function starInfo(o,n,hm,bortle,aperture){const D=aperture>0?aperture:0;
-  if(o.type=='AST') return [`размер ${fmtR(o.a)}′${o.b!=o.a?'×'+fmtR(o.b)+'′':''}${o.a>=90?' — для бинокля':''} · каталог «${esc(o.user)}»`,
-    esc(o.desc||'описания нет').replace(/\.\s*$/,'')];
+  if(o.type=='AST') return [`размер ${fmtR(o.a)}′${o.b!=o.a?'×'+fmtR(o.b)+'′':''}${o.a>=90?' — для бинокля':''}${o.user?` · каталог «${esc(o.user)}»`:''}`,
+    o.desc?esc(o.desc).replace(/\.\s*$/,''):'звёздный узор, а не скопление: ищите по карте неба рядом с объектом и узнавайте по форме'];
   if(o.type=='DBL'){const d=o.d, need=apRound(116/d.sep*1.3);
     return [`${o.d.desig&&o.d.desig!=o.name?o.d.desig+' · ':''}${f1(d.m1)}ᵐ + ${f1(d.m2)}ᵐ · расстояние ${fmtR(d.sep)}″${d.pa!=null?` · угол ${d.pa}°`:''}${d.sp?' · спектр '+esc(d.sp):''}`,
       need?`разделяется от ${need} мм${D?` (у вас ${D} мм — ${D>=need?'разделится':'не разделится'})`:''}`:'разделяется в любой телескоп, если пара шире 3″ — даже в бинокль']}
@@ -1782,8 +1790,8 @@ function render(){
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?isDone(o)
     :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||!(o.mag<lo||o.mag>hi))&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
-  // свои каталоги (астеризмы) — только для визуала, в «Астрофото» их нет и в поиске
-  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&o.user)).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
+  // астеризмы и свои каталоги — только для визуала, в «Астрофото» их нет и в поиске
+  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&(o.user||o.type=='AST'))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
     .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
   const mc=mntCfg(), useM=mine=='plan'&&!q&&mc.on&&$('mntOrd').value=='m';
