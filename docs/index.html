@@ -1782,7 +1782,8 @@ function render(){
   const pick=o=>mine=='plan'?inPlan.has(o.id):mine=='done'?isDone(o)
     :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||!(o.mag<lo||o.mag>hi))&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
-  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
+  // свои каталоги (астеризмы) — только для визуала, в «Астрофото» их нет и в поиске
+  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&o.user)).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
     .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
   const mc=mntCfg(), useM=mine=='plan'&&!q&&mc.on&&$('mntOrd').value=='m';
