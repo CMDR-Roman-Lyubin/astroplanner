@@ -119,6 +119,7 @@ html.red body::after{content:"";position:fixed;inset:0;background:#e00000;mix-bl
 .hzpanel{position:relative;background:rgba(12,17,29,.88);padding:12px max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .hzpanel p{margin:4px 0}
 .log button.stell{flex-basis:100%;color:var(--fg)}
+.scoret{display:flex;align-items:center;gap:8px}.scoret label{flex:1}.scoret button{font:inherit;font-size:13px;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer}
 .mntbar{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card)}
 .mntbar label{flex-direction:row;align-items:center;gap:8px;font-size:13px}.mntbar select{flex:1}
 .mntbar input[type=range]{flex:1;padding:0;border:0;background:none;accent-color:var(--accent)}
@@ -385,6 +386,11 @@ button.more{font:inherit;color:var(--accent);background:var(--card);border:1px s
     <label>до<input id="magMax" type="range" min="-1" max="16" step="0.5" aria-label="Самый слабый блеск в рекомендациях"></label>
   </div>
   </details>
+  <div class="mntbar" id="timeBar" hidden>
+    <label>Оценка<select id="scoreMode"><option value="">за всю ночь</option><option value="t">на время — ближайшие 2 часа</option></select></label>
+    <div class="scoret" id="scoreTbox"><label>с <strong id="scoreTime"></strong><input type="range" id="scoreT" aria-label="Время, с которого считается оценка"></label><button type="button" id="scoreNow">Сейчас</button></div>
+    <p class="sub" id="scoreSt"></p>
+  </div>
   <div class="list" id="list"></div>
   <div id="map" hidden></div>
   <div id="hzRec" hidden><video id="hzVideo" autoplay playsinline muted></video><div class="hzcross" aria-hidden="true"></div>
@@ -1337,7 +1343,11 @@ $('setupList').onclick=e=>{const b=e.target.closest('button'); if(!b) return;
   syncScope(); drawEps(); render()};
 {const m=saved.mnt||{}; $('mntOn').checked=!!m.on; $('mntHome').value=m.home??0; $('mntLim').value=m.lim||180; $('mntAlt').value=m.alt||87; $('mntRate').value=m.rate||4; $('mntOrd').value=m.ord||''}
 for(const id of ['mntOn','mntHome','mntOrd']) $(id).onchange=render; for(const id of ['mntLim','mntAlt','mntRate']) $(id).oninput=render;
-$('mntT').oninput=e=>{mapIdx=+e.target.value; if(!mntRaf) mntRaf=requestAnimationFrame(()=>{mntRaf=0; render()})};
+$('mntT').oninput=$('scoreT').oninput=e=>{mapIdx=+e.target.value; if(!mntRaf) mntRaf=requestAnimationFrame(()=>{mntRaf=0; render()})};
+$('scoreMode').value=saved.scoreMode=='t'?'t':''; $('scoreMode').onchange=render;
+// «Сейчас» — текущий момент, если выбранная ночь сейчас тёмная, иначе начало темноты
+$('scoreNow').onclick=()=>{const n=lastNight?.n; if(!n?.dark.length) return; const a0=n.dark[0].i, a1=n.dark.at(-1).i, nowI=Math.round((Date.now()-n.s[0].t)/STEP);
+  mapIdx=nowI>=a0&&nowI<=a1?nowI:a0; render()};
 function drawUserCats(){$('userList').innerHTML=userCats.length?userCats.map((c,i)=>`<span class="setupitem"><button type="button" disabled>${esc(c.name)} — ${c.objects.length}</button><button type="button" data-udel="${i}" aria-label="Удалить каталог ${esc(c.name)}">✕</button></span>`).join('')
   :'<span class="sub">Пока нет.</span>'}
 drawUserCats();
@@ -1747,7 +1757,7 @@ function render(){
     $('list').innerHTML='<p class="empty">Укажите широту от −90 до 90, долготу от −180 до 180 и дату.</p>';return}
   const focal=parseFloat($('focal').value), sensor=$('sensor').value, aperture=parseFloat($('aperture').value);
   const fov=fieldOfView(focal,sensor);
-  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,mnt:{on:$('mntOn').checked,home:+$('mntHome').value,lim:+$('mntLim').value,alt:+$('mntAlt').value,rate:+$('mntRate').value,ord:$('mntOrd').value},ota:otaV,otaPh:otaPhV,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
+  try{localStorage.setItem('sky',JSON.stringify({city:$('city').value,bortle,lat,lon,focal:$('focal').value,sensor,aperture:$('aperture').value,tfocal:$('tfocal').value,eps:myEps,oiii:$('oiii').checked,asr:$('asr').value,doneF:$('doneF').value,mnt:{on:$('mntOn').checked,home:+$('mntHome').value,lim:+$('mntLim').value,alt:+$('mntAlt').value,rate:+$('mntRate').value,ord:$('mntOrd').value},scoreMode:$('scoreMode').value,ota:otaV,otaPh:otaPhV,stellBtn:$('stellBtn').checked,setups,prog:$('prog').value,cats:{photo:[...catSets.photo],visual:[...catSets.visual]},magMin:+$('magMin').value,magMax:+$('magMax').value,
     mode,tab,types:[...types],listPhoto:listOf('photo')?.id,listVisual:listOf('visual')?.id}))}catch{}
   // интерфейс под режим и раздел
   for(const m of MODES) $('mode-'+m).setAttribute('aria-selected',m==mode);
@@ -1814,7 +1824,18 @@ function render(){
     :(doneF=='hide'?!isDone(o)||kind=='photo'&&projActive(log[o.id].photo):doneF=='only'?isDone(o):true)&&(q||(prog?prog.has(o):inCats(o,mask,kind))&&(kind!='visual'||!(o.mag<lo||o.mag>hi))&&(!types.size||types.has(o.type)||types.has('CARB')&&o.carbon));
   // журнал — по датам, свежие сверху; план — по времени лучшей высоты; рекомендации — по оценке
   // астеризмы и свои каталоги — только для визуала, в «Астрофото» их нет и в поиске
-  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&(o.user||o.type=='AST'))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,n,bortle,aperture,oiii))}))
+  // визуал «на время»: оценка по двум часам тёмного времени с выбранного момента (общего с картой и порядком для монтировки) —
+  // высота в эти часы, Луна в это время, сколько объект ещё простоит выше порога. Карточка (график, восход) — по всей ночи
+  const useT=kind=='visual'&&(tab=='rec'||tab=='plan')&&$('scoreMode').value=='t';
+  $('timeBar').hidden=kind!='visual'||(tab!='rec'&&tab!='plan'); $('scoreTbox').hidden=!useT;
+  let nS=n;
+  if(useT){const [a0,a1]=nightIdx(n,lat), t=$('scoreT'), nowI=Math.round((Date.now()-n.s[0].t)/STEP);
+    t.min=a0; t.max=a1; t.value=mapIdx; $('scoreTime').textContent=hm(n.s[mapIdx].t);
+    nS={...n,dark:n.dark.filter(x=>x.i>=mapIdx&&x.i<mapIdx+24)};
+    $('scoreSt').textContent=`Оценка по времени ${hm(n.s[mapIdx].t)}–${hm(n.s[Math.min(mapIdx+23,a1)].t)}: высота в эти часы, Луна, сколько объект ещё простоит выше ${VISUAL_ALT}°.`
+      +(nowI<a0||nowI>a1?' Выбранная ночь сейчас не тёмная — «Сейчас» поставит начало темноты.':'')}
+  else $('scoreSt').textContent='';
+  let all=CATALOG.filter(o=>pick(o)&&(!q||o.key.includes(q))&&!(kind=='photo'&&(o.user||o.type=='AST'))).map(o=>({o,...(kind=='photo'?photoScore(o,n,fov):visualScore(o,nS,bortle,aperture,oiii))}))
     .filter(r=>q||mine||doneF=='only'||r.score>=5)
     .sort((a,b)=>exact(b.o)-exact(a.o)||(mine=='done'&&!q?doneOf(b.o).localeCompare(doneOf(a.o)):mine&&!q?order(a)-order(b):b.score-a.score));
   const mc=mntCfg(), useM=mine=='plan'&&!q&&mc.on&&$('mntOrd').value=='m';
